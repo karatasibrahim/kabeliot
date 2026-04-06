@@ -1,0 +1,66 @@
+name: kabeliot_app
+description: "Kabel Teknoloji IoT Mobile Application"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Navigation
+  go_router: ^15.0.0
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Immutable Models
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
+
+  # HTTP Client
+  dio: ^5.9.0
+
+  # Storage
+  flutter_secure_storage: ^9.2.4
+  shared_preferences: ^2.3.5
+
+  # UI / Fonts
+  google_fonts: ^6.2.1
+  flutter_svg: ^2.0.14
+  lottie: ^3.3.1
+  flutter_animate: ^4.5.2
+  flutter_screenutil: ^5.9.3
+  shimmer: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.13
+  riverpod_generator: ^2.6.3
+  freezed: ^2.5.7
+  json_serializable: ^6.9.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/animations/
+    - assets/images/
+    - assets/icons/
+
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
+
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono.ttf
