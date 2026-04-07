@@ -31,7 +31,9 @@ class GradientScaffold extends StatelessWidget {
       bottomNavigationBar: bottomNavigationBar,
       resizeToAvoidBottomInset: resizeToAvoidBottomInset,
       body: DecoratedBox(
-        decoration: AppDecorations.screenBackground,
+        decoration: Theme.of(context).brightness == Brightness.dark
+            ? AppDecorations.screenBackground
+            : AppDecorations.screenBackgroundLight,
         child: showGrid
             ? Stack(
                 children: [

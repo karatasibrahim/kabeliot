@@ -11,6 +11,8 @@ import '../../features/devices/presentation/add_device_screen.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/settings_screen.dart';
+import '../../features/devices/presentation/device_detail_screen.dart';
+import '../../features/devices/domain/device_models.dart';
 import '../../shared/providers/auth_state_provider.dart';
 import '../../shared/widgets/main_shell.dart';
 
@@ -58,6 +60,13 @@ GoRouter appRouter(Ref ref) {
               builder: (_, __) => const DevicesScreen(),
               routes: [
                 GoRoute(path: 'add', builder: (_, __) => const AddDeviceScreen()),
+                GoRoute(
+                  path: 'detail',
+                  builder: (_, state) {
+                    final device = state.extra as DeviceModel;
+                    return DeviceDetailScreen(device: device);
+                  },
+                ),
               ],
             ),
           ]),

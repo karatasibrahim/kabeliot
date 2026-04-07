@@ -14,4 +14,5 @@ abstract final class AppRoutes {
   // Alt ekranlar
   static const String addDevice = '/devices/add';
   static const String settings = '/profile/settings';
+  static const String deviceDetail = '/devices/detail';
 }

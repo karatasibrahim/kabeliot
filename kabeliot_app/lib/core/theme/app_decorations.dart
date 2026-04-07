@@ -88,12 +88,20 @@ abstract final class AppDecorations {
         ),
       );
 
-  // --- Gradient Arka Plan ---
+  // --- Gradient Arka Planlar ---
   static BoxDecoration get screenBackground => const BoxDecoration(
         gradient: RadialGradient(
           center: Alignment(-0.8, -0.8),
           radius: 1.5,
           colors: [AppColors.gradientMid, AppColors.gradientStart],
+        ),
+      );
+
+  static BoxDecoration get screenBackgroundLight => const BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment(-0.8, -0.8),
+          radius: 1.5,
+          colors: [LightColors.gradientMid, LightColors.gradientStart],
         ),
       );
 }

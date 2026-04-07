@@ -3,10 +3,14 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/mqtt/mqtt_providers.dart';
+import '../../../core/mqtt/mqtt_service.dart';
+import '../../../core/mqtt/notification_provider.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_decorations.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../features/devices/domain/device_models.dart';
 import '../../../shared/widgets/device_card_shell.dart';
 import '../../../shared/widgets/gradient_scaffold.dart';
 
@@ -15,8 +19,19 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final mqttStatus = ref.watch(mqttConnectionProvider);
+    final notifications = ref.watch(mqttNotificationsProvider);
+    final unreadCount = ref.read(mqttNotificationsProvider.notifier).unreadCount;
+
+    final totalDevices = mockDeviceList.length;
+    final totalSensors = mockDeviceList.fold(0, (s, d) => s + d.sensorCount);
+    final totalRelays = mockDeviceList.fold(0, (s, d) => s + d.relayCount);
+    final onlineCount = mockDeviceList.where((d) => d.isOnline).length;
+
+    final recentActivity = notifications.take(4).toList();
+
     return GradientScaffold(
-      appBar: _buildAppBar(context),
+      appBar: _buildAppBar(context, unreadCount),
       child: SafeArea(
         child: RefreshIndicator(
           color: AppColors.primary,
@@ -25,13 +40,13 @@ class HomeScreen extends ConsumerWidget {
           child: ListView(
             padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
             children: [
-              _buildHeader(),
+              _buildHeader(mqttStatus),
               SizedBox(height: 20.h),
-              _buildSummaryGrid(),
+              _buildSummaryGrid(totalDevices, totalSensors, totalRelays, onlineCount),
               SizedBox(height: 24.h),
-              _buildQuickActions(context),
+              _buildQuickActions(context, ref, mqttStatus),
               SizedBox(height: 24.h),
-              _buildRecentActivity(),
+              _buildRecentActivity(recentActivity),
               SizedBox(height: 24.h),
               _buildDevicePreview(context),
               SizedBox(height: 16.h),
@@ -42,7 +57,7 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
+  PreferredSizeWidget _buildAppBar(BuildContext context, int unreadCount) {
     return AppBar(
       backgroundColor: Colors.transparent,
       automaticallyImplyLeading: false,
@@ -67,18 +82,19 @@ class HomeScreen extends ConsumerWidget {
           icon: Stack(
             children: [
               Icon(Icons.notifications_outlined, color: AppColors.textPrimary, size: 24.r),
-              Positioned(
-                top: 0,
-                right: 0,
-                child: Container(
-                  width: 8.r,
-                  height: 8.r,
-                  decoration: const BoxDecoration(
-                    color: AppColors.error,
-                    shape: BoxShape.circle,
+              if (unreadCount > 0)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Container(
+                    width: 8.r,
+                    height: 8.r,
+                    decoration: const BoxDecoration(
+                      color: AppColors.error,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           onPressed: () => context.go(AppRoutes.notifications),
@@ -88,11 +104,18 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(MqttConnectionStatus mqttStatus) {
     final hour = DateTime.now().hour;
     final greeting = hour < 12 ? 'Günaydın' : hour < 18 ? 'İyi günler' : 'İyi akşamlar';
     final now = DateTime.now();
     final dateStr = '${now.day} ${_monthName(now.month)} ${now.year}';
+
+    final (statusColor, statusText) = switch (mqttStatus) {
+      MqttConnectionStatus.connected => (AppColors.success, 'MQTT Bağlı'),
+      MqttConnectionStatus.connecting => (AppColors.warning, 'Bağlanıyor'),
+      MqttConnectionStatus.disconnected => (AppColors.error, 'MQTT Bağlı Değil'),
+      MqttConnectionStatus.error => (AppColors.error, 'Bağlantı Hatası'),
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,21 +125,22 @@ class HomeScreen extends ConsumerWidget {
         SizedBox(height: 4.h),
         Row(
           children: [
-            Icon(Icons.circle, color: AppColors.success, size: 8.r),
+            Icon(Icons.circle, color: statusColor, size: 8.r),
             SizedBox(width: 6.w),
-            Text('MQTT Bağlı  •  $dateStr', style: AppTextStyles.labelSmall.copyWith(color: AppColors.textDisabled)),
+            Text('$statusText  •  $dateStr',
+                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textDisabled)),
           ],
         ),
       ],
     ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1, end: 0, duration: 400.ms);
   }
 
-  Widget _buildSummaryGrid() {
+  Widget _buildSummaryGrid(int totalDevices, int totalSensors, int totalRelays, int onlineCount) {
     final items = [
-      _SummaryItem(label: 'Toplam Cihaz', value: '12', icon: Icons.developer_board_rounded, color: AppColors.primary),
-      _SummaryItem(label: 'Sensörler', value: '8', icon: Icons.sensors_rounded, color: AppColors.accent),
-      _SummaryItem(label: 'Röle Çıkışı', value: '6', icon: Icons.toggle_on_rounded, color: AppColors.warning),
-      _SummaryItem(label: 'Çevrimiçi', value: '9', icon: Icons.wifi_rounded, color: AppColors.success),
+      _SummaryItem(label: 'Toplam Cihaz', value: '$totalDevices', icon: Icons.developer_board_rounded, color: AppColors.primary),
+      _SummaryItem(label: 'Sensörler', value: '$totalSensors', icon: Icons.sensors_rounded, color: AppColors.accent),
+      _SummaryItem(label: 'Röle Çıkışı', value: '$totalRelays', icon: Icons.toggle_on_rounded, color: AppColors.warning),
+      _SummaryItem(label: 'Çevrimiçi', value: '$onlineCount', icon: Icons.wifi_rounded, color: AppColors.success),
     ];
 
     return GridView.count(
@@ -135,7 +159,7 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildQuickActions(BuildContext context) {
+  Widget _buildQuickActions(BuildContext context, WidgetRef ref, MqttConnectionStatus mqttStatus) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -156,14 +180,18 @@ class HomeScreen extends ConsumerWidget {
                 icon: Icons.refresh_rounded,
                 label: 'Yenile',
                 color: AppColors.accent,
-                onTap: () {},
+                onTap: () => ref.read(mqttConnectionProvider.notifier).reconnect(),
               ),
               SizedBox(width: 10.w),
               _QuickActionChip(
-                icon: Icons.cloud_outlined,
-                label: 'MQTT Bağlan',
-                color: AppColors.success,
-                onTap: () {},
+                icon: mqttStatus == MqttConnectionStatus.connected
+                    ? Icons.cloud_done_outlined
+                    : Icons.cloud_outlined,
+                label: mqttStatus == MqttConnectionStatus.connected ? 'MQTT Bağlı' : 'MQTT Bağlan',
+                color: mqttStatus == MqttConnectionStatus.connected
+                    ? AppColors.success
+                    : AppColors.warning,
+                onTap: () => ref.read(mqttConnectionProvider.notifier).reconnect(),
               ),
               SizedBox(width: 10.w),
               _QuickActionChip(
@@ -179,13 +207,24 @@ class HomeScreen extends ConsumerWidget {
     ).animate().fadeIn(duration: 400.ms, delay: 300.ms);
   }
 
-  Widget _buildRecentActivity() {
-    final activities = [
-      _ActivityItem(icon: Icons.wifi_rounded, color: AppColors.success, text: 'PCB-Kontrol-001 çevrimiçi oldu', time: '2 dk önce'),
-      _ActivityItem(icon: Icons.thermostat_rounded, color: AppColors.warning, text: 'Sensör-Node-02: Sıcaklık 42°C aştı', time: '15 dk önce'),
-      _ActivityItem(icon: Icons.wifi_off_rounded, color: AppColors.error, text: 'Gateway-Ana bağlantısı kesildi', time: '1 sa önce'),
-      _ActivityItem(icon: Icons.toggle_on_rounded, color: AppColors.accent, text: 'Röle-01 manuel olarak açıldı', time: '2 sa önce'),
-    ];
+  Widget _buildRecentActivity(List<AppNotification> activities) {
+    if (activities.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Son Aktivite', style: AppTextStyles.headingSmall),
+          SizedBox(height: 12.h),
+          Container(
+            padding: EdgeInsets.all(20.r),
+            decoration: AppDecorations.card,
+            child: Center(
+              child: Text('Henüz aktivite yok',
+                  style: AppTextStyles.bodySmall.copyWith(color: AppColors.textDisabled)),
+            ),
+          ),
+        ],
+      ).animate().fadeIn(duration: 400.ms, delay: 400.ms);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,10 +235,16 @@ class HomeScreen extends ConsumerWidget {
           decoration: AppDecorations.card,
           child: Column(
             children: activities.asMap().entries.map((e) {
+              final notif = e.value;
               final isLast = e.key == activities.length - 1;
               return Column(
                 children: [
-                  _ActivityTile(item: e.value),
+                  _ActivityTile(
+                    icon: notif.icon,
+                    color: notif.color,
+                    text: notif.title,
+                    time: _relativeTime(notif.timestamp),
+                  ),
                   if (!isLast) Divider(height: 1, color: AppColors.divider, indent: 52.w),
                 ],
               );
@@ -210,12 +255,16 @@ class HomeScreen extends ConsumerWidget {
     ).animate().fadeIn(duration: 400.ms, delay: 400.ms);
   }
 
+  String _relativeTime(DateTime ts) {
+    final diff = DateTime.now().difference(ts);
+    if (diff.inMinutes < 1) return 'Az önce';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} dk önce';
+    if (diff.inHours < 24) return '${diff.inHours} sa önce';
+    return '${diff.inDays} gün önce';
+  }
+
   Widget _buildDevicePreview(BuildContext context) {
-    final devices = [
-      _DevicePreviewItem(name: 'PCB-Kontrol-001', type: 'Kontrol Kartı', id: 'KB-001-A2F3', isOnline: true),
-      _DevicePreviewItem(name: 'Sensör-Node-02', type: 'Sensör Kartı', id: 'KB-002-B1E9', isOnline: true),
-      _DevicePreviewItem(name: 'Gateway-Ana', type: 'Gateway', id: 'KB-003-C7D1', isOnline: false),
-    ];
+    final devices = mockDeviceList.take(3).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -226,7 +275,8 @@ class HomeScreen extends ConsumerWidget {
             Text('Cihazlarım', style: AppTextStyles.headingSmall),
             TextButton(
               onPressed: () => context.go(AppRoutes.devices),
-              child: Text('Tümünü Gör →', style: AppTextStyles.bodySmall.copyWith(color: AppColors.primary)),
+              child: Text('Tümünü Gör →',
+                  style: AppTextStyles.bodySmall.copyWith(color: AppColors.primary)),
             ),
           ],
         ),
@@ -248,29 +298,13 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-// --- Veri modelleri (mock) ---
+// --- Veri modelleri ---
 class _SummaryItem {
   const _SummaryItem({required this.label, required this.value, required this.icon, required this.color});
   final String label;
   final String value;
   final IconData icon;
   final Color color;
-}
-
-class _ActivityItem {
-  const _ActivityItem({required this.icon, required this.color, required this.text, required this.time});
-  final IconData icon;
-  final Color color;
-  final String text;
-  final String time;
-}
-
-class _DevicePreviewItem {
-  const _DevicePreviewItem({required this.name, required this.type, required this.id, required this.isOnline});
-  final String name;
-  final String type;
-  final String id;
-  final bool isOnline;
 }
 
 // --- Widget bileşenleri ---
@@ -355,8 +389,11 @@ class _QuickActionChip extends StatelessWidget {
 }
 
 class _ActivityTile extends StatelessWidget {
-  const _ActivityTile({required this.item});
-  final _ActivityItem item;
+  const _ActivityTile({required this.icon, required this.color, required this.text, required this.time});
+  final IconData icon;
+  final Color color;
+  final String text;
+  final String time;
 
   @override
   Widget build(BuildContext context) {
@@ -368,15 +405,15 @@ class _ActivityTile extends StatelessWidget {
             width: 36.r,
             height: 36.r,
             decoration: BoxDecoration(
-              color: item.color.withValues(alpha: 0.12),
+              color: color.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(item.icon, color: item.color, size: 18.r),
+            child: Icon(icon, color: color, size: 18.r),
           ),
           SizedBox(width: 12.w),
-          Expanded(child: Text(item.text, style: AppTextStyles.bodySmall.copyWith(color: AppColors.textPrimary))),
+          Expanded(child: Text(text, style: AppTextStyles.bodySmall.copyWith(color: AppColors.textPrimary))),
           SizedBox(width: 8.w),
-          Text(item.time, style: AppTextStyles.labelSmall),
+          Text(time, style: AppTextStyles.labelSmall),
         ],
       ),
     );
@@ -385,7 +422,7 @@ class _ActivityTile extends StatelessWidget {
 
 class _DevicePreviewCard extends StatelessWidget {
   const _DevicePreviewCard({required this.device});
-  final _DevicePreviewItem device;
+  final DeviceModel device;
 
   @override
   Widget build(BuildContext context) {
