@@ -151,7 +151,7 @@ class ProfileScreen extends ConsumerWidget {
               TextButton(
                 onPressed: () {
                   Navigator.pop(ctx);
-                  ref.read(authStateProvider.notifier).logout();
+                  ref.read(authStateProvider.notifier).signOut();
                 },
                 child: Text('Çıkış Yap', style: AppTextStyles.labelLarge.copyWith(color: AppColors.error)),
               ),

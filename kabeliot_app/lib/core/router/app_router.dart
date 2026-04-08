@@ -4,7 +4,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'app_routes.dart';
 import '../../features/splash/presentation/splash_screen.dart';
 import '../../features/auth/presentation/login/login_screen.dart';
-import '../../features/auth/presentation/register/register_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
 import '../../features/devices/presentation/devices_screen.dart';
 import '../../features/devices/presentation/add_device_screen.dart';
@@ -20,7 +19,8 @@ part 'app_router.g.dart';
 
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
-  final isAuthenticated = ref.watch(authStateProvider);
+  final session = ref.watch(authStateProvider);
+  final isAuthenticated = session != null;
 
   return GoRouter(
     initialLocation: AppRoutes.splash,
@@ -30,7 +30,7 @@ GoRouter appRouter(Ref ref) {
 
       if (location == AppRoutes.splash) return null;
 
-      final authRoutes = [AppRoutes.login, AppRoutes.register];
+      final authRoutes = [AppRoutes.login];
       final protectedRoutes = [AppRoutes.home, AppRoutes.devices, AppRoutes.notifications, AppRoutes.profile];
 
       if (!isAuthenticated && protectedRoutes.any((r) => location.startsWith(r))) {
@@ -45,7 +45,6 @@ GoRouter appRouter(Ref ref) {
       // Auth akışı (shell dışı)
       GoRoute(path: AppRoutes.splash, builder: (_, __) => const SplashScreen()),
       GoRoute(path: AppRoutes.login, builder: (_, __) => const LoginScreen()),
-      GoRoute(path: AppRoutes.register, builder: (_, __) => const RegisterScreen()),
 
       // Ana uygulama — StatefulShellRoute (bottom nav kalıcı)
       StatefulShellRoute.indexedStack(

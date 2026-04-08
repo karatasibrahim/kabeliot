@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 /// Sensör tipi — kullanıcı değiştirebilir
@@ -184,12 +185,84 @@ class DeviceModel {
 const kMaxSensors = 6;
 const kMaxRelays = 8;
 
-/// Uygulama genelinde mock cihaz listesi
-final mockDeviceList = [
-  const DeviceModel(id: 'KB-001-A2F3', name: 'PCB-Kontrol-001', type: 'Kontrol Kartı', category: 'Kontrol', isOnline: true, sensorCount: 3, relayCount: 2, ipAddress: '192.168.1.101'),
-  const DeviceModel(id: 'KB-002-B1E9', name: 'Sensör-Node-02', type: 'Sensör Kartı', category: 'Sensör', isOnline: true, sensorCount: 5, relayCount: 0, ipAddress: '192.168.1.102'),
-  const DeviceModel(id: 'KB-003-C7D1', name: 'Gateway-Ana', type: 'Gateway', category: 'Gateway', isOnline: false, sensorCount: 0, relayCount: 0, ipAddress: '192.168.1.103'),
-  const DeviceModel(id: 'KB-004-D4F8', name: 'PCB-Motor-04', type: 'Motor Sürücü', category: 'Röle', isOnline: true, sensorCount: 1, relayCount: 4, ipAddress: '192.168.1.104'),
-  const DeviceModel(id: 'KB-005-E2A1', name: 'Sensör-Node-05', type: 'Sensör Kartı', category: 'Sensör', isOnline: false, sensorCount: 4, relayCount: 0, ipAddress: '192.168.1.105'),
-  const DeviceModel(id: 'KB-006-F9B3', name: 'Röle-Kontrol-06', type: 'Röle Modülü', category: 'Röle', isOnline: true, sensorCount: 0, relayCount: 8, ipAddress: '192.168.1.106'),
-];
+// ─── Firestore Modelleri ──────────────────────────────────────────────────────
+
+/// Firestore companies/{id}/devices/{deviceId} dökümanı
+class FirestoreDevice {
+  const FirestoreDevice({
+    required this.id,
+    required this.deviceStatus,
+    this.deviceName,
+    this.lastSeen,
+  });
+
+  final String id;
+  final bool deviceStatus;
+  final String? deviceName;
+  final DateTime? lastSeen;
+
+  bool get isOnline => deviceStatus;
+
+  static FirestoreDevice fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final d = doc.data();
+    return FirestoreDevice(
+      id: doc.id,
+      deviceStatus: (d['device_status'] as bool?) ?? false,
+      deviceName: d['device_name'] as String?,
+      lastSeen: (d['last_seen'] as Timestamp?)?.toDate(),
+    );
+  }
+}
+
+/// Firestore …/devices/{id}/sensors/{sensorId} dökümanı
+class FirestoreSensor {
+  const FirestoreSensor({
+    required this.id,
+    required this.value,
+    required this.sensorName,
+    required this.readingTime,
+    this.alert,
+  });
+
+  final String id;
+  final double value;
+  final String sensorName;
+  final DateTime readingTime;
+  final Map<String, dynamic>? alert;
+
+  static FirestoreSensor fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final d = doc.data();
+    return FirestoreSensor(
+      id: doc.id,
+      value: ((d['value'] ?? 0) as num).toDouble(),
+      sensorName: (d['sensor_name'] as String?) ?? '',
+      readingTime: (d['reading_time'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      alert: d['alert'] as Map<String, dynamic>?,
+    );
+  }
+}
+
+/// Firestore …/devices/{id}/relays/{relayId} dökümanı
+class FirestoreRelay {
+  const FirestoreRelay({
+    required this.id,
+    required this.relayStatus,
+    required this.relayName,
+    this.readingTime,
+  });
+
+  final String id;
+  final bool relayStatus;
+  final String relayName;
+  final DateTime? readingTime;
+
+  static FirestoreRelay fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final d = doc.data();
+    return FirestoreRelay(
+      id: doc.id,
+      relayStatus: (d['relay_status'] as bool?) ?? false,
+      relayName: (d['relay_name'] as String?) ?? '',
+      readingTime: (d['reading_time'] as Timestamp?)?.toDate(),
+    );
+  }
+}

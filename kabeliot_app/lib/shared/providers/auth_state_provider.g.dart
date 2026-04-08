@@ -6,14 +6,11 @@ part of 'auth_state_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$authStateHash() => r'0cfa592a5347aae639ad37df84d98ba541974091';
+String _$authStateHash() => r'e2c5e56dc3917d1a456a09f001c0c0c122b7bd0c';
 
-/// Global oturum durumu.
-/// true = giriş yapılmış, false = misafir
-///
-/// Copied from [AuthState].
+/// See also [AuthState].
 @ProviderFor(AuthState)
-final authStateProvider = NotifierProvider<AuthState, bool>.internal(
+final authStateProvider = NotifierProvider<AuthState, AuthSession?>.internal(
   AuthState.new,
   name: r'authStateProvider',
   debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -23,6 +20,6 @@ final authStateProvider = NotifierProvider<AuthState, bool>.internal(
   allTransitiveDependencies: null,
 );
 
-typedef _$AuthState = Notifier<bool>;
+typedef _$AuthState = Notifier<AuthSession?>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

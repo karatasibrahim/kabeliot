@@ -3,7 +3,6 @@ abstract final class AppRoutes {
   // Auth akışı (shell dışı)
   static const String splash = '/';
   static const String login = '/login';
-  static const String register = '/register';
 
   // Ana ekranlar (shell içi — bottom nav)
   static const String home = '/home';

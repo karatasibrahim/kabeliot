@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:go_router/go_router.dart';
-import '../../../../core/router/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_decorations.dart';
 import '../../../../core/theme/app_text_styles.dart';
@@ -37,13 +35,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
-    // TODO: Gerçek API çağrısı buraya gelecek
-    await Future.delayed(const Duration(milliseconds: 1200));
+    try {
+      await ref.read(authStateProvider.notifier).signIn(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
+      // Başarılı → GoRouter redirect otomatik /home'a yönlendirir
+    } on Exception catch (e) {
+      if (!mounted) return;
+      final raw = e.toString();
+      debugPrint('LOGIN ERROR: $raw');
+      final msg = _errorMessage(raw);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$msg\n\n$raw'),
+          backgroundColor: AppColors.error,
+          duration: const Duration(seconds: 10),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
-    if (!mounted) return;
-    // Oturumu aç → GoRouter redirect otomatik /home'a yönlendirir
-    ref.read(authStateProvider.notifier).setAuthenticated(true);
-    setState(() => _isLoading = false);
+  String _errorMessage(String code) {
+    if (code.contains('company-not-found')) return 'Hesabınız sisteme tanımlı değil.';
+    if (code.contains('wrong-password') || code.contains('invalid-credential')) {
+      return 'Hatalı e-posta veya şifre.';
+    }
+    if (code.contains('user-not-found')) return 'Bu e-posta ile kayıtlı hesap bulunamadı.';
+    if (code.contains('network-request-failed')) return 'İnternet bağlantısı yok.';
+    if (code.contains('too-many-requests')) return 'Çok fazla deneme. Lütfen bekleyin.';
+    return 'Giriş başarısız. Lütfen tekrar deneyin.';
   }
 
   @override
@@ -135,17 +158,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
 
               SizedBox(height: 24.h),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('Hesabınız yok mu? ', style: AppTextStyles.bodyMedium),
-                  TextButton(
-                    onPressed: () => context.push(AppRoutes.register),
-                    child: const Text('Kayıt Ol'),
-                  ),
-                ],
-              ).animate().fadeIn(duration: 400.ms, delay: 400.ms),
 
               SizedBox(height: 24.h),
             ],

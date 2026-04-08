@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../core/mqtt/mqtt_service.dart';
-import '../../../core/mqtt/mqtt_providers.dart';
+import '../../../core/firebase/device_repository.dart';
+import '../../../shared/providers/auth_state_provider.dart';
 import '../domain/device_models.dart';
 
 part 'sensor_config_provider.g.dart';
@@ -10,7 +11,9 @@ part 'sensor_config_provider.g.dart';
 String _sensorKey(String deviceId, int index) => 'sc_${deviceId}_$index';
 String _relayKey(String deviceId, int index) => 'rc_${deviceId}_$index';
 
-// ─── Sensör Yapılandırması ────────────────────────────────────────────────────
+final _repo = DeviceRepository();
+
+// ─── Sensör Yapılandırması (SharedPreferences — kullanıcı tercihleri) ─────────
 
 @riverpod
 class SensorConfigs extends _$SensorConfigs {
@@ -39,13 +42,17 @@ class SensorConfigs extends _$SensorConfigs {
   }
 }
 
-// ─── Röle Durumları ───────────────────────────────────────────────────────────
+// ─── Röle Durumları — Firestore + SharedPreferences ──────────────────────────
 
 @riverpod
 class RelayStates extends _$RelayStates {
+  StreamSubscription<List<FirestoreRelay>>? _firestoreSub;
+
   @override
   List<RelayConfig> build(String deviceId, int relayCount) {
     _loadFromPrefs();
+    _subscribeFirestore();
+    ref.onDispose(() => _firestoreSub?.cancel());
     return List.generate(relayCount, (i) => RelayConfig(name: 'Röle ${i + 1}'));
   }
 
@@ -58,15 +65,35 @@ class RelayStates extends _$RelayStates {
       if (raw != null) {
         try {
           final map = jsonDecode(raw) as Map<String, dynamic>;
-          updated[i] = RelayConfig(
+          updated[i] = updated[i].copyWith(
             name: (map['name'] as String?) ?? 'Röle ${i + 1}',
             isEnabled: (map['isEnabled'] as bool?) ?? false,
-            isOn: false,
           );
         } catch (_) {}
       }
     }
     state = updated;
+  }
+
+  /// Firestore'daki relay_status değişikliklerini dinle
+  void _subscribeFirestore() {
+    final session = ref.read(authStateProvider);
+    if (session == null) return;
+
+    _firestoreSub?.cancel();
+    _firestoreSub = _repo
+        .watchRelays(session.companyId, deviceId)
+        .listen((firestoreRelays) {
+      final updated = List<RelayConfig>.from(state);
+      for (int i = 0; i < firestoreRelays.length && i < updated.length; i++) {
+        updated[i] = updated[i].copyWith(isOn: firestoreRelays[i].relayStatus);
+        // Firestore'daki relay_name'i de kullan (eğer SharedPrefs'te özel isim yoksa)
+        if (updated[i].name == 'Röle ${i + 1}' && firestoreRelays[i].relayName.isNotEmpty) {
+          updated[i] = updated[i].copyWith(name: firestoreRelays[i].relayName);
+        }
+      }
+      state = updated;
+    });
   }
 
   Future<void> _saveRelay(int index) async {
@@ -82,21 +109,30 @@ class RelayStates extends _$RelayStates {
 
   void toggle(int index) {
     if (!state[index].isEnabled) return;
-    final updated = [...state];
+    final session = ref.read(authStateProvider);
+
+    final updated = List<RelayConfig>.from(state);
     final newIsOn = !updated[index].isOn;
     updated[index] = updated[index].copyWith(isOn: newIsOn);
     state = updated;
 
-    final connStatus = ref.read(mqttConnectionProvider);
-    if (connStatus == MqttConnectionStatus.connected) {
-      final topic = 'kb/$deviceId/relay/$index/set';
-      MqttService.instance.publish(topic, newIsOn ? '1' : '0');
+    // Firestore'a yaz (optimistic — state zaten güncellendi)
+    if (session != null && index < _firestoreRelayIds.length) {
+      _repo.updateRelayStatus(
+        session.companyId,
+        deviceId,
+        _firestoreRelayIds[index],
+        newIsOn,
+      );
     }
   }
 
+  // Firestore'dan gelen relay doc ID'lerini tut (toggle için gerekli)
+  final List<String> _firestoreRelayIds = [];
+
   /// Kanalı aktif / pasif yap
   Future<void> setEnabled(int index, bool enabled) async {
-    final updated = [...state];
+    final updated = List<RelayConfig>.from(state);
     updated[index] = updated[index].copyWith(isEnabled: enabled, isOn: false);
     state = updated;
     await _saveRelay(index);
@@ -104,8 +140,10 @@ class RelayStates extends _$RelayStates {
 
   /// Röle adını değiştir
   Future<void> rename(int index, String name) async {
-    final updated = [...state];
-    updated[index] = updated[index].copyWith(name: name.trim().isEmpty ? 'Röle ${index + 1}' : name.trim());
+    final updated = List<RelayConfig>.from(state);
+    updated[index] = updated[index].copyWith(
+      name: name.trim().isEmpty ? 'Röle ${index + 1}' : name.trim(),
+    );
     state = updated;
     await _saveRelay(index);
   }

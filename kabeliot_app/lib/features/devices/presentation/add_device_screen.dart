@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wifi_scan/wifi_scan.dart';
+import '../../../core/firebase/device_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../shared/providers/auth_state_provider.dart';
 import '../../../shared/widgets/gradient_scaffold.dart';
 import '../../../shared/widgets/kabel_button.dart';
 import '../../../shared/widgets/kabel_text_field.dart';
@@ -25,14 +28,14 @@ class _KabelApInfo {
   final int level; // dBm (RSSI)
 }
 
-class AddDeviceScreen extends StatefulWidget {
+class AddDeviceScreen extends ConsumerStatefulWidget {
   const AddDeviceScreen({super.key});
 
   @override
-  State<AddDeviceScreen> createState() => _AddDeviceScreenState();
+  ConsumerState<AddDeviceScreen> createState() => _AddDeviceScreenState();
 }
 
-class _AddDeviceScreenState extends State<AddDeviceScreen> {
+class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
   // Adım: 0=Tara, 1=Cihaz Seç, 2=Konfig Gir, 3=Provision Sonucu
   int _step = 0;
 
@@ -202,6 +205,16 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
         mqttUser: _mqttUserCtrl.text.trim(),
         mqttPassword: _mqttPassCtrl.text,
       ));
+
+      // Firestore'a cihazı kaydet
+      final session = ref.read(authStateProvider);
+      if (session != null && _deviceInfo != null) {
+        await DeviceRepository().addDevice(
+          session.companyId,
+          _deviceInfo!.chipId,
+          _deviceNameCtrl.text.trim(),
+        );
+      }
 
       if (!mounted) return;
       setState(() {

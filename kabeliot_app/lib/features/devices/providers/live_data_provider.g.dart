@@ -6,7 +6,7 @@ part of 'live_data_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$liveSensorDataHash() => r'830bc8590ed70f8d78d7682d626608137d46a7b8';
+String _$liveSensorDataHash() => r'2c5cf8ac96437342a4b7a7ac83887f76456235b8';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -37,26 +37,22 @@ abstract class _$LiveSensorData
   List<double> build(String deviceId, int sensorIndex);
 }
 
-/// Belirli bir sensör için son 60 anlık değeri tutar.
-/// MQTT bağlıysa gerçek veri, bağlı değilse simülasyon fallback.
+/// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
 ///
 /// Copied from [LiveSensorData].
 @ProviderFor(LiveSensorData)
 const liveSensorDataProvider = LiveSensorDataFamily();
 
-/// Belirli bir sensör için son 60 anlık değeri tutar.
-/// MQTT bağlıysa gerçek veri, bağlı değilse simülasyon fallback.
+/// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
 ///
 /// Copied from [LiveSensorData].
 class LiveSensorDataFamily extends Family<List<double>> {
-  /// Belirli bir sensör için son 60 anlık değeri tutar.
-  /// MQTT bağlıysa gerçek veri, bağlı değilse simülasyon fallback.
+  /// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
   ///
   /// Copied from [LiveSensorData].
   const LiveSensorDataFamily();
 
-  /// Belirli bir sensör için son 60 anlık değeri tutar.
-  /// MQTT bağlıysa gerçek veri, bağlı değilse simülasyon fallback.
+  /// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
   ///
   /// Copied from [LiveSensorData].
   LiveSensorDataProvider call(String deviceId, int sensorIndex) {
@@ -85,14 +81,12 @@ class LiveSensorDataFamily extends Family<List<double>> {
   String? get name => r'liveSensorDataProvider';
 }
 
-/// Belirli bir sensör için son 60 anlık değeri tutar.
-/// MQTT bağlıysa gerçek veri, bağlı değilse simülasyon fallback.
+/// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
 ///
 /// Copied from [LiveSensorData].
 class LiveSensorDataProvider
     extends AutoDisposeNotifierProviderImpl<LiveSensorData, List<double>> {
-  /// Belirli bir sensör için son 60 anlık değeri tutar.
-  /// MQTT bağlıysa gerçek veri, bağlı değilse simülasyon fallback.
+  /// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
   ///
   /// Copied from [LiveSensorData].
   LiveSensorDataProvider(String deviceId, int sensorIndex)

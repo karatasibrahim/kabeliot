@@ -187,7 +187,7 @@ class _SensorConfigsProviderElement
   int get sensorCount => (origin as SensorConfigsProvider).sensorCount;
 }
 
-String _$relayStatesHash() => r'5fa1b7bee03871b4255c22297da2152841a88795';
+String _$relayStatesHash() => r'df2eb9d154981de7ade19b4b93e7d96864f8e40d';
 
 abstract class _$RelayStates
     extends BuildlessAutoDisposeNotifier<List<RelayConfig>> {

@@ -1,41 +1,38 @@
+import 'dart:async';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import '../../../core/mqtt/mqtt_providers.dart';
+import '../../../core/firebase/device_repository.dart';
+import '../../../shared/providers/auth_state_provider.dart';
+import '../domain/device_models.dart';
 
 part 'live_data_provider.g.dart';
 
 const _historyLength = 60;
 
-/// Belirli bir sensör için son 60 anlık değeri tutar.
-/// MQTT bağlıysa gerçek veri, bağlı değilse simülasyon fallback.
+/// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
 @riverpod
 class LiveSensorData extends _$LiveSensorData {
+  StreamSubscription<List<FirestoreSensor>>? _sub;
+
   @override
   List<double> build(String deviceId, int sensorIndex) {
-    final initial = List<double>.filled(_historyLength, _initialValue(sensorIndex));
+    final session = ref.watch(authStateProvider);
 
-    // sensorValueStream: MQTT bağlıysa gerçek, değilse simülasyon
-    ref.listen(sensorValueStreamProvider(deviceId, sensorIndex), (_, next) {
-      next.whenData((value) {
-        state = [...state.skip(1), value];
+    _sub?.cancel();
+
+    if (session != null) {
+      _sub = DeviceRepository()
+          .watchSensors(session.companyId, deviceId)
+          .listen((sensors) {
+        if (sensorIndex < sensors.length) {
+          final value = sensors[sensorIndex].value;
+          state = [...state.skip(1), value];
+        }
       });
-    });
+    }
 
-    return initial;
+    ref.onDispose(() => _sub?.cancel());
+    return List<double>.filled(_historyLength, 0.0);
   }
 
   double get currentValue => state.isEmpty ? 0 : state.last;
-
-  static double _initialValue(int idx) => switch (idx % 11) {
-        0 => 22.5,
-        1 => 58.0,
-        2 => 1013.0,
-        3 => 220.0,
-        4 => 4.5,
-        5 => 3200.0,
-        6 => 450.0,
-        7 => 85.0,
-        8 => 12.3,
-        9 => 8.5,
-        _ => 50.0,
-      };
 }

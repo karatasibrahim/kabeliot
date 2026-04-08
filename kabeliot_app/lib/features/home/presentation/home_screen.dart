@@ -11,6 +11,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_decorations.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../features/devices/domain/device_models.dart';
+import '../../../features/devices/providers/device_list_provider.dart';
 import '../../../shared/widgets/device_card_shell.dart';
 import '../../../shared/widgets/gradient_scaffold.dart';
 
@@ -22,11 +23,11 @@ class HomeScreen extends ConsumerWidget {
     final mqttStatus = ref.watch(mqttConnectionProvider);
     final notifications = ref.watch(mqttNotificationsProvider);
     final unreadCount = ref.read(mqttNotificationsProvider.notifier).unreadCount;
+    final devicesAsync = ref.watch(deviceListProvider);
 
-    final totalDevices = mockDeviceList.length;
-    final totalSensors = mockDeviceList.fold(0, (s, d) => s + d.sensorCount);
-    final totalRelays = mockDeviceList.fold(0, (s, d) => s + d.relayCount);
-    final onlineCount = mockDeviceList.where((d) => d.isOnline).length;
+    final devices = devicesAsync.valueOrNull ?? [];
+    final totalDevices = devices.length;
+    final onlineCount = devices.where((d) => d.isOnline).length;
 
     final recentActivity = notifications.take(4).toList();
 
@@ -42,13 +43,13 @@ class HomeScreen extends ConsumerWidget {
             children: [
               _buildHeader(mqttStatus),
               SizedBox(height: 20.h),
-              _buildSummaryGrid(totalDevices, totalSensors, totalRelays, onlineCount),
+              _buildSummaryGrid(totalDevices, onlineCount),
               SizedBox(height: 24.h),
               _buildQuickActions(context, ref, mqttStatus),
               SizedBox(height: 24.h),
               _buildRecentActivity(recentActivity),
               SizedBox(height: 24.h),
-              _buildDevicePreview(context),
+              _buildDevicePreview(context, devices.take(3).toList()),
               SizedBox(height: 16.h),
             ],
           ),
@@ -135,12 +136,13 @@ class HomeScreen extends ConsumerWidget {
     ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1, end: 0, duration: 400.ms);
   }
 
-  Widget _buildSummaryGrid(int totalDevices, int totalSensors, int totalRelays, int onlineCount) {
+  Widget _buildSummaryGrid(int totalDevices, int onlineCount) {
+    final offlineCount = totalDevices - onlineCount;
     final items = [
       _SummaryItem(label: 'Toplam Cihaz', value: '$totalDevices', icon: Icons.developer_board_rounded, color: AppColors.primary),
-      _SummaryItem(label: 'Sensörler', value: '$totalSensors', icon: Icons.sensors_rounded, color: AppColors.accent),
-      _SummaryItem(label: 'Röle Çıkışı', value: '$totalRelays', icon: Icons.toggle_on_rounded, color: AppColors.warning),
       _SummaryItem(label: 'Çevrimiçi', value: '$onlineCount', icon: Icons.wifi_rounded, color: AppColors.success),
+      _SummaryItem(label: 'Çevrimdışı', value: '$offlineCount', icon: Icons.wifi_off_rounded, color: AppColors.error),
+      _SummaryItem(label: 'Sensör Slotu', value: '${totalDevices * kMaxSensors}', icon: Icons.sensors_rounded, color: AppColors.accent),
     ];
 
     return GridView.count(
@@ -263,9 +265,7 @@ class HomeScreen extends ConsumerWidget {
     return '${diff.inDays} gün önce';
   }
 
-  Widget _buildDevicePreview(BuildContext context) {
-    final devices = mockDeviceList.take(3).toList();
-
+  Widget _buildDevicePreview(BuildContext context, List<FirestoreDevice> devices) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -281,13 +281,23 @@ class HomeScreen extends ConsumerWidget {
           ],
         ),
         SizedBox(height: 8.h),
-        ...devices.asMap().entries.map((e) => Padding(
-          padding: EdgeInsets.only(bottom: 10.h),
-          child: _DevicePreviewCard(device: e.value)
-              .animate()
-              .fadeIn(duration: 350.ms, delay: Duration(milliseconds: 500 + e.key * 60))
-              .slideX(begin: 0.05, end: 0, duration: 350.ms, delay: Duration(milliseconds: 500 + e.key * 60)),
-        )),
+        if (devices.isEmpty)
+          Container(
+            padding: EdgeInsets.all(20.r),
+            decoration: AppDecorations.card,
+            child: Center(
+              child: Text('Henüz cihaz yok',
+                  style: AppTextStyles.bodySmall.copyWith(color: AppColors.textDisabled)),
+            ),
+          )
+        else
+          ...devices.asMap().entries.map((e) => Padding(
+            padding: EdgeInsets.only(bottom: 10.h),
+            child: _DevicePreviewCard(device: e.value)
+                .animate()
+                .fadeIn(duration: 350.ms, delay: Duration(milliseconds: 500 + e.key * 60))
+                .slideX(begin: 0.05, end: 0, duration: 350.ms, delay: Duration(milliseconds: 500 + e.key * 60)),
+          )),
       ],
     );
   }
@@ -422,11 +432,12 @@ class _ActivityTile extends StatelessWidget {
 
 class _DevicePreviewCard extends StatelessWidget {
   const _DevicePreviewCard({required this.device});
-  final DeviceModel device;
+  final FirestoreDevice device;
 
   @override
   Widget build(BuildContext context) {
     final statusColor = device.isOnline ? AppColors.success : AppColors.error;
+    final name = device.deviceName ?? device.id;
     return DeviceCardShell(
       accentColor: statusColor,
       padding: EdgeInsets.all(14.r),
@@ -446,8 +457,8 @@ class _DevicePreviewCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(device.name, style: AppTextStyles.headingSmall),
-                Text(device.type, style: AppTextStyles.bodySmall),
+                Text(name, style: AppTextStyles.headingSmall),
+                Text('Kabel Core', style: AppTextStyles.bodySmall),
                 Text(device.id, style: AppTextStyles.mono),
               ],
             ),

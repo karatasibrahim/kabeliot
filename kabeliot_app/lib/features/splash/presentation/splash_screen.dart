@@ -30,9 +30,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
     // Token kontrolü — şimdilik daima login'e yönlendir
     // Gerçek implementasyonda SecureStorageService ile token kontrol edilecek
-    final isAuthenticated = ref.read(authStateProvider);
+    final session = ref.read(authStateProvider);
     if (mounted) {
-      context.go(isAuthenticated ? AppRoutes.home : AppRoutes.login);
+      context.go(session != null ? AppRoutes.home : AppRoutes.login);
     }
   }
 

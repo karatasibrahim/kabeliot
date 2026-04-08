@@ -6,7 +6,6 @@ import '../../../core/mqtt/mqtt_service.dart';
 import '../../../core/mqtt/mqtt_settings_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../shared/providers/theme_provider.dart';
 import '../../../shared/widgets/gradient_scaffold.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -72,7 +71,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentThemeMode = ref.watch(themeModeNotifierProvider);
     final mqttSettingsAsync = ref.watch(mqttSettingsProvider);
     final mqttStatus = ref.watch(mqttConnectionProvider);
 
@@ -98,56 +96,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         child: ListView(
           padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
           children: [
-            // --- Görünüm ---
-            _buildSection('Görünüm', [
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Tema',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
-                    ),
-                    SizedBox(height: 12.h),
-                    SegmentedButton<ThemeMode>(
-                      style: SegmentedButton.styleFrom(
-                        selectedBackgroundColor: AppColors.primary,
-                        selectedForegroundColor: Colors.white,
-                        side: BorderSide(color: AppColors.border, width: 1),
-                      ),
-                      segments: const [
-                        ButtonSegment(
-                          value: ThemeMode.light,
-                          icon: Icon(Icons.light_mode_rounded),
-                          label: Text('Açık'),
-                        ),
-                        ButtonSegment(
-                          value: ThemeMode.dark,
-                          icon: Icon(Icons.dark_mode_rounded),
-                          label: Text('Koyu'),
-                        ),
-                        ButtonSegment(
-                          value: ThemeMode.system,
-                          icon: Icon(Icons.phone_android_rounded),
-                          label: Text('Sistem'),
-                        ),
-                      ],
-                      selected: {currentThemeMode},
-                      onSelectionChanged: (modes) {
-                        ref
-                            .read(themeModeNotifierProvider.notifier)
-                            .setThemeMode(modes.first);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ]),
-            SizedBox(height: 16.h),
-
             // --- MQTT ---
             _buildSectionWithBadge('MQTT Sunucu', statusColor, statusLabel, [
               _buildTextRow(label: 'Sunucu Adresi', controller: _mqttHostController, hint: 'örn: mqtt.broker.io'),

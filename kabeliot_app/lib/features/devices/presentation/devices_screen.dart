@@ -3,13 +3,13 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/mqtt/mqtt_providers.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../shared/widgets/device_card_shell.dart';
 import '../../../shared/widgets/gradient_scaffold.dart';
 import '../domain/device_models.dart';
+import '../providers/device_list_provider.dart';
 
 class DevicesScreen extends ConsumerStatefulWidget {
   const DevicesScreen({super.key});
@@ -22,18 +22,17 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   String _filter = 'Tümü';
   String _search = '';
 
-  static const _filters = ['Tümü', 'Çevrimiçi', 'Çevrimdışı', 'Sensör', 'Röle'];
+  static const _filters = ['Tümü', 'Çevrimiçi', 'Çevrimdışı'];
 
-  List<DeviceModel> get _filteredDevices {
-    return mockDeviceList.where((d) {
+  List<FirestoreDevice> _applyFilter(List<FirestoreDevice> all) {
+    return all.where((d) {
+      final name = d.deviceName ?? d.id;
       final matchSearch = _search.isEmpty ||
-          d.name.toLowerCase().contains(_search.toLowerCase()) ||
+          name.toLowerCase().contains(_search.toLowerCase()) ||
           d.id.toLowerCase().contains(_search.toLowerCase());
       final matchFilter = switch (_filter) {
         'Çevrimiçi' => d.isOnline,
         'Çevrimdışı' => !d.isOnline,
-        'Sensör' => d.category == 'Sensör',
-        'Röle' => d.category == 'Röle',
         _ => true,
       };
       return matchSearch && matchFilter;
@@ -42,7 +41,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final devices = _filteredDevices;
+    final listAsync = ref.watch(deviceListProvider);
 
     return GradientScaffold(
       appBar: AppBar(
@@ -133,55 +132,85 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
 
             SizedBox(height: 16.h),
 
-            // Cihaz sayısı
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20.w),
-              child: Row(
-                children: [
-                  Text('${devices.length} cihaz',
-                      style: AppTextStyles.bodySmall),
-                  const Spacer(),
-                  Text(
-                      '${devices.where((d) => d.isOnline).length} çevrimiçi',
-                      style: AppTextStyles.bodySmall
-                          .copyWith(color: AppColors.success)),
-                ],
-              ),
-            ),
-            SizedBox(height: 8.h),
-
-            // Liste
+            // İçerik
             Expanded(
-              child: devices.isEmpty
-                  ? _buildEmpty()
-                  : ListView.separated(
-                      padding:
-                          EdgeInsets.fromLTRB(20.w, 0, 20.w, 100.h),
-                      itemCount: devices.length,
-                      separatorBuilder: (_, __) => SizedBox(height: 10.h),
-                      itemBuilder: (context, i) => _DeviceCard(
-                        device: devices[i],
-                        onTap: () => context.push(
-                          AppRoutes.deviceDetail,
-                          extra: devices[i],
+              child: listAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(
+                  child: Text('Hata: $e',
+                      style: AppTextStyles.bodySmall
+                          .copyWith(color: AppColors.error)),
+                ),
+                data: (all) {
+                  final devices = _applyFilter(all);
+
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20.w),
+                        child: Row(
+                          children: [
+                            Text('${devices.length} cihaz',
+                                style: AppTextStyles.bodySmall),
+                            const Spacer(),
+                            Text(
+                                '${devices.where((d) => d.isOnline).length} çevrimiçi',
+                                style: AppTextStyles.bodySmall
+                                    .copyWith(color: AppColors.success)),
+                          ],
                         ),
-                      )
-                          .animate()
-                          .fadeIn(
-                              duration: 300.ms,
-                              delay: Duration(milliseconds: i * 50))
-                          .slideY(
-                              begin: 0.05,
-                              end: 0,
-                              duration: 300.ms,
-                              delay: Duration(milliseconds: i * 50)),
-                    ),
+                      ),
+                      SizedBox(height: 8.h),
+                      Expanded(
+                        child: devices.isEmpty
+                            ? _buildEmpty()
+                            : ListView.separated(
+                                padding: EdgeInsets.fromLTRB(
+                                    20.w, 0, 20.w, 100.h),
+                                itemCount: devices.length,
+                                separatorBuilder: (_, __) =>
+                                    SizedBox(height: 10.h),
+                                itemBuilder: (context, i) => _DeviceCard(
+                                  device: devices[i],
+                                  onTap: () => context.push(
+                                    AppRoutes.deviceDetail,
+                                    extra: _toDeviceModel(devices[i]),
+                                  ),
+                                )
+                                    .animate()
+                                    .fadeIn(
+                                        duration: 300.ms,
+                                        delay: Duration(
+                                            milliseconds: i * 50))
+                                    .slideY(
+                                        begin: 0.05,
+                                        end: 0,
+                                        duration: 300.ms,
+                                        delay: Duration(
+                                            milliseconds: i * 50)),
+                              ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ],
         ),
       ),
     );
   }
+
+  /// FirestoreDevice → DeviceModel adapter (device_detail_screen için)
+  DeviceModel _toDeviceModel(FirestoreDevice d) => DeviceModel(
+        id: d.id,
+        name: d.deviceName ?? d.id,
+        type: 'Kabel Core',
+        category: 'IoT',
+        isOnline: d.isOnline,
+        sensorCount: kMaxSensors,
+        relayCount: kMaxRelays,
+      );
 
   Widget _buildEmpty() {
     return Center(
@@ -203,115 +232,78 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   }
 }
 
-class _DeviceCard extends ConsumerWidget {
+class _DeviceCard extends StatelessWidget {
   const _DeviceCard({required this.device, required this.onTap});
-  final DeviceModel device;
+  final FirestoreDevice device;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final onlineAsync = ref.watch(deviceOnlineStatusProvider(device.id));
-    final isOnline = onlineAsync.when(
-      data: (v) => v,
-      loading: () => device.isOnline,
-      error: (_, __) => device.isOnline,
-    );
+  Widget build(BuildContext context) {
+    final isOnline = device.isOnline;
     final statusColor = isOnline ? AppColors.success : AppColors.error;
+    final name = device.deviceName ?? device.id;
 
     return GestureDetector(
       onTap: onTap,
       child: DeviceCardShell(
         accentColor: statusColor,
         padding: EdgeInsets.all(16.r),
-        child: Column(
+        child: Row(
           children: [
-            Row(
+            Container(
+              width: 44.r,
+              height: 44.r,
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+              child: Icon(Icons.developer_board_rounded,
+                  color: statusColor, size: 22.r),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: AppTextStyles.headingSmall),
+                  Text('Kabel Core', style: AppTextStyles.bodySmall),
+                  Text(device.id, style: AppTextStyles.mono),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Container(
-                  width: 44.r,
-                  height: 44.r,
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
                   decoration: BoxDecoration(
                     color: statusColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10.r),
+                    borderRadius: BorderRadius.circular(8.r),
                   ),
-                  child: Icon(Icons.developer_board_rounded,
-                      color: statusColor, size: 22.r),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(device.name, style: AppTextStyles.headingSmall),
-                      Text(device.type, style: AppTextStyles.bodySmall),
-                      Text(device.id, style: AppTextStyles.mono),
+                      Container(
+                        width: 6.r,
+                        height: 6.r,
+                        decoration: BoxDecoration(
+                            color: statusColor, shape: BoxShape.circle),
+                      ),
+                      SizedBox(width: 4.w),
+                      Text(
+                        isOnline ? 'Online' : 'Offline',
+                        style: AppTextStyles.labelSmall
+                            .copyWith(color: statusColor),
+                      ),
                     ],
                   ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 8.w, vertical: 4.h),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8.r),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6.r,
-                            height: 6.r,
-                            decoration: BoxDecoration(
-                                color: statusColor, shape: BoxShape.circle),
-                          ),
-                          SizedBox(width: 4.w),
-                          Text(
-                            isOnline ? 'Online' : 'Offline',
-                            style: AppTextStyles.labelSmall
-                                .copyWith(color: statusColor),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(height: 6.h),
-                    Icon(Icons.arrow_forward_ios_rounded,
-                        color: AppColors.textDisabled, size: 12.r),
-                  ],
-                ),
+                SizedBox(height: 6.h),
+                Icon(Icons.arrow_forward_ios_rounded,
+                    color: AppColors.textDisabled, size: 12.r),
               ],
             ),
-            if (device.sensorCount > 0 || device.relayCount > 0) ...[
-              SizedBox(height: 12.h),
-              Divider(height: 1, color: AppColors.divider),
-              SizedBox(height: 10.h),
-              Row(
-                children: [
-                  if (device.sensorCount > 0) ...[
-                    Icon(Icons.sensors_rounded,
-                        color: AppColors.accent, size: 14.r),
-                    SizedBox(width: 4.w),
-                    Text('${device.sensorCount} Sensör',
-                        style: AppTextStyles.labelSmall
-                            .copyWith(color: AppColors.accent)),
-                    SizedBox(width: 16.w),
-                  ],
-                  if (device.relayCount > 0) ...[
-                    Icon(Icons.toggle_on_rounded,
-                        color: AppColors.warning, size: 14.r),
-                    SizedBox(width: 4.w),
-                    Text('${device.relayCount} Röle',
-                        style: AppTextStyles.labelSmall
-                            .copyWith(color: AppColors.warning)),
-                  ],
-                  const Spacer(),
-                  Text('kb/${device.id.toLowerCase()}',
-                      style: AppTextStyles.monoSmall),
-                ],
-              ),
-            ],
           ],
         ),
       ),

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "286454387473",
+    "project_id": "kabel-core",
+    "storage_bucket": "kabel-core.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:286454387473:android:29a3362ed692e2ef8272b0",
+        "android_client_info": {
+          "package_name": "com.kabel.core"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdyHpQa4Lm1-3ToRLEOK_E9Fq8v0wsVqs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,4 +1,4 @@
-package com.kabelteknoloji.kabeliot_app
+package com.kabel.core
 
 import io.flutter.embedding.android.FlutterActivity
 
