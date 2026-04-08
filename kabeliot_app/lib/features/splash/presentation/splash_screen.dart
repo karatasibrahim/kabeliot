@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,15 +26,24 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _navigate() async {
+    // Minimum splash süresi + Firebase Auth restore için bekle
     await Future.delayed(const Duration(milliseconds: 2800));
     if (!mounted) return;
 
-    // Token kontrolü — şimdilik daima login'e yönlendir
-    // Gerçek implementasyonda SecureStorageService ile token kontrol edilecek
-    final session = ref.read(authStateProvider);
-    if (mounted) {
-      context.go(session != null ? AppRoutes.home : AppRoutes.login);
+    // Firebase Auth currentUser varsa restore tamamlanana kadar bekle (max 3s)
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    if (firebaseUser != null) {
+      // Restore async çalışıyor — state güncellenene kadar kısa bekle
+      for (int i = 0; i < 30; i++) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (!mounted) return;
+        if (ref.read(authStateProvider) != null) break;
+      }
     }
+
+    if (!mounted) return;
+    final session = ref.read(authStateProvider);
+    context.go(session != null ? AppRoutes.home : AppRoutes.login);
   }
 
   @override

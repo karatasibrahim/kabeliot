@@ -8,6 +8,8 @@ import '../../features/home/presentation/home_screen.dart';
 import '../../features/devices/presentation/devices_screen.dart';
 import '../../features/devices/presentation/add_device_screen.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
+import '../../features/profile/presentation/app_settings_screen.dart';
+import '../../features/profile/presentation/notification_settings_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/settings_screen.dart';
 import '../../features/devices/presentation/device_detail_screen.dart';
@@ -78,6 +80,8 @@ GoRouter appRouter(Ref ref) {
               builder: (_, __) => const ProfileScreen(),
               routes: [
                 GoRoute(path: 'settings', builder: (_, __) => const SettingsScreen()),
+                GoRoute(path: 'notification-settings', builder: (_, __) => const NotificationSettingsScreen()),
+                GoRoute(path: 'app-settings', builder: (_, __) => const AppSettingsScreen()),
               ],
             ),
           ]),

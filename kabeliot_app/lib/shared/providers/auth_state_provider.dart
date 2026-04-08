@@ -27,7 +27,28 @@ class AuthState extends _$AuthState {
   final _companyRepo = CompanyRepository();
 
   @override
-  AuthSession? build() => null;
+  AuthSession? build() {
+    _restoreSession();
+    return null;
+  }
+
+  /// Uygulama açılışında Firebase Auth'daki mevcut oturumu geri yükler.
+  Future<void> _restoreSession() async {
+    final user = _authRepo.currentUser;
+    if (user == null) return;
+    try {
+      final result = await _companyRepo.findCompanyAndRole(user.uid);
+      if (result == null) return;
+      state = AuthSession(
+        uid: user.uid,
+        companyId: result.companyId,
+        email: user.email ?? '',
+        role: result.role,
+      );
+    } catch (_) {
+      // Restore başarısız olursa sessizce geç — kullanıcı login ekranını görür
+    }
+  }
 
   Future<void> signIn(String email, String password) async {
     final credential = await _authRepo.signIn(email, password);

@@ -200,7 +200,7 @@ class HomeScreen extends ConsumerWidget {
                 icon: Icons.bar_chart_rounded,
                 label: 'Grafik Görünüm',
                 color: AppColors.warning,
-                onTap: () {},
+                onTap: () => context.go(AppRoutes.devices),
               ),
             ],
           ),

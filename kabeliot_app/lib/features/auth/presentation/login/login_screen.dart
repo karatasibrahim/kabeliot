@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -56,6 +57,57 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _showForgotPasswordDialog() async {
+    final emailCtrl = TextEditingController(text: _emailController.text.trim());
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+        title: Text('Şifremi Unuttum', style: AppTextStyles.headingSmall),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('E-posta adresinize şifre sıfırlama bağlantısı gönderilecek.',
+                style: AppTextStyles.bodySmall),
+            SizedBox(height: 16.h),
+            TextField(
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                hintText: 'E-posta adresiniz',
+                prefixIcon: const Icon(Icons.email_outlined),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
+          TextButton(
+            onPressed: () async {
+              final email = emailCtrl.text.trim();
+              Navigator.pop(ctx);
+              if (email.isEmpty) return;
+              try {
+                await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Şifre sıfırlama e-postası gönderildi.')),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Hata: ${e.toString()}'), backgroundColor: AppColors.error),
+                );
+              }
+            },
+            child: Text('Gönder', style: TextStyle(color: AppColors.primary)),
+          ),
+        ],
+      ),
+    );
   }
 
   String _errorMessage(String code) {
@@ -131,7 +183,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () {},
+                          onPressed: _showForgotPasswordDialog,
                           child: Text(
                             'Şifremi Unuttum',
                             style: AppTextStyles.bodySmall.copyWith(color: AppColors.primary),

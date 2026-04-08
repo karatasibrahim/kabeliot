@@ -68,6 +68,11 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
   bool _provisionSuccess = false;
   String? _provisionError;
 
+  // Adım 3 — Firestore kayıt (provision'dan bağımsız, internete geçince)
+  bool _isSavingToFirestore = false;
+  bool _firebaseSaved = false;
+  String? _firebaseSaveError;
+
   // Demo/test modu — gerçek cihaz olmadan test
   bool _mockMode = false;
 
@@ -206,16 +211,6 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
         mqttPassword: _mqttPassCtrl.text,
       ));
 
-      // Firestore'a cihazı kaydet
-      final session = ref.read(authStateProvider);
-      if (session != null && _deviceInfo != null) {
-        await DeviceRepository().addDevice(
-          session.companyId,
-          _deviceInfo!.chipId,
-          _deviceNameCtrl.text.trim(),
-        );
-      }
-
       if (!mounted) return;
       setState(() {
         _isProvisioning = false;
@@ -226,6 +221,36 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
       setState(() {
         _isProvisioning = false;
         _provisionError = e.toString();
+      });
+    }
+  }
+
+  // ─── Firestore kayıt — internete döndükten sonra çağrılır ────────────────
+  Future<void> _saveToFirestore() async {
+    final session = ref.read(authStateProvider);
+    if (session == null || _deviceInfo == null) return;
+
+    setState(() {
+      _isSavingToFirestore = true;
+      _firebaseSaveError = null;
+    });
+
+    try {
+      await DeviceRepository().addDevice(
+        session.companyId,
+        _deviceInfo!.chipId,
+        _deviceNameCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _isSavingToFirestore = false;
+        _firebaseSaved = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isSavingToFirestore = false;
+        _firebaseSaveError = e.toString();
       });
     }
   }
@@ -329,6 +354,10 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
                         error: _provisionError,
                         deviceName: _deviceNameCtrl.text,
                         mqttHost: _mqttHostCtrl.text,
+                        isSavingToFirestore: _isSavingToFirestore,
+                        firebaseSaved: _firebaseSaved,
+                        firebaseSaveError: _firebaseSaveError,
+                        onSaveToFirestore: _saveToFirestore,
                         onDone: () => Navigator.of(context).pop(),
                         onRetry: () => setState(() {
                           _step = 2;
@@ -725,6 +754,10 @@ class _Step3Result extends StatelessWidget {
     required this.error,
     required this.deviceName,
     required this.mqttHost,
+    required this.isSavingToFirestore,
+    required this.firebaseSaved,
+    required this.firebaseSaveError,
+    required this.onSaveToFirestore,
     required this.onDone,
     required this.onRetry,
   });
@@ -734,6 +767,10 @@ class _Step3Result extends StatelessWidget {
   final String? error;
   final String deviceName;
   final String mqttHost;
+  final bool isSavingToFirestore;
+  final bool firebaseSaved;
+  final String? firebaseSaveError;
+  final VoidCallback onSaveToFirestore;
   final VoidCallback onDone;
   final VoidCallback onRetry;
 
@@ -813,28 +850,69 @@ class _Step3Result extends StatelessWidget {
             ],
           ),
         ).animate().fadeIn(delay: 400.ms),
-        SizedBox(height: 16.h),
-        Container(
-          padding: EdgeInsets.all(12.r),
-          decoration: BoxDecoration(
-            color: AppColors.info.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10.r),
-            border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.info_outline_rounded, color: AppColors.info, size: 16.r),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: Text(
-                  'Cihaz 1-2 dakika içinde çevrimiçi görünecek. '
-                  'Görünmezse kartı yeniden başlatın.',
-                  style: AppTextStyles.labelSmall.copyWith(color: AppColors.info),
+        SizedBox(height: 20.h),
+
+        // Firestore kayıt bölümü
+        if (!firebaseSaved) ...[
+          Container(
+            padding: EdgeInsets.all(16.r),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12.r),
+              border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.wifi_off_rounded, color: AppColors.warning, size: 18.r),
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: Text(
+                        'Cihazı sisteme kaydetmek için telefon internetine bağlanın.',
+                        style: AppTextStyles.labelSmall.copyWith(color: AppColors.warning),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-        ).animate().fadeIn(delay: 500.ms),
+                if (firebaseSaveError != null) ...[
+                  SizedBox(height: 8.h),
+                  Text(
+                    'Hata: $firebaseSaveError',
+                    style: AppTextStyles.labelSmall.copyWith(color: AppColors.error),
+                  ),
+                ],
+                SizedBox(height: 12.h),
+                KabelButton(
+                  label: isSavingToFirestore ? 'Kaydediliyor...' : 'Sisteme Kaydet',
+                  onPressed: isSavingToFirestore ? null : onSaveToFirestore,
+                  isLoading: isSavingToFirestore,
+                  icon: Icons.cloud_upload_rounded,
+                ),
+              ],
+            ),
+          ).animate().fadeIn(delay: 500.ms),
+        ] else ...[
+          Container(
+            padding: EdgeInsets.all(12.r),
+            decoration: BoxDecoration(
+              color: AppColors.success.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10.r),
+              border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.cloud_done_rounded, color: AppColors.success, size: 16.r),
+                SizedBox(width: 8.w),
+                Text(
+                  'Cihaz sisteme kaydedildi.',
+                  style: AppTextStyles.labelSmall.copyWith(color: AppColors.success),
+                ),
+              ],
+            ),
+          ).animate().fadeIn(),
+        ],
+
         const Spacer(),
         KabelButton(
           label: 'Cihazlara Dön',
