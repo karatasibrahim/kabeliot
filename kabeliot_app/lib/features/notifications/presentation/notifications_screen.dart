@@ -14,7 +14,7 @@ class NotificationsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notifications = ref.watch(mqttNotificationsProvider);
     final notifier = ref.read(mqttNotificationsProvider.notifier);
-    final unread = notifier.unreadCount;
+    final unread = notifications.where((n) => !n.isRead).length;
 
     // Group by date label
     final groups = _groupByDate(notifications);

@@ -18,6 +18,8 @@ class DeviceDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusColor = device.isOnline ? AppColors.success : AppColors.error;
+    final relays = ref.watch(relayStatesProvider(device.id, kMaxRelays));
+    final activeRelayCount = relays.where((r) => r.isEnabled).length;
 
     return GradientScaffold(
       appBar: AppBar(
@@ -51,55 +53,40 @@ class DeviceDetailScreen extends ConsumerWidget {
         child: ListView(
           padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
           children: [
-            // Cihaz bilgi kartı
             _DeviceInfoCard(device: device).animate().fadeIn(duration: 300.ms),
             SizedBox(height: 24.h),
 
-            // Sensörler
-            if (device.sensorCount > 0) ...[
-              _SectionHeader(
-                title: 'Sensörler',
-                icon: Icons.sensors_rounded,
-                color: AppColors.accent,
-                count: device.sensorCount,
-              ),
-              SizedBox(height: 12.h),
-              _SensorGrid(device: device),
-              SizedBox(height: 24.h),
-            ],
+            // Sensörler — her zaman 6 slot
+            _SectionHeader(
+              title: 'Sensörler',
+              icon: Icons.sensors_rounded,
+              color: AppColors.accent,
+              active: device.sensorCount,
+              max: kMaxSensors,
+            ),
+            SizedBox(height: 12.h),
+            _SensorGrid(device: device),
+            SizedBox(height: 24.h),
 
-            // Röleler
-            if (device.relayCount > 0) ...[
-              _SectionHeader(
-                title: 'Röleler',
-                icon: Icons.toggle_on_rounded,
-                color: AppColors.warning,
-                count: device.relayCount,
-              ),
-              SizedBox(height: 12.h),
-              _RelayList(device: device),
-              SizedBox(height: 24.h),
-            ],
-
-            if (device.sensorCount == 0 && device.relayCount == 0)
-              Center(
-                child: Padding(
-                  padding: EdgeInsets.all(40.r),
-                  child: Column(
-                    children: [
-                      Icon(Icons.cable_rounded, color: AppColors.textDisabled, size: 56.r),
-                      SizedBox(height: 12.h),
-                      Text('Bu cihazda I/O yok', style: AppTextStyles.bodyMedium),
-                    ],
-                  ),
-                ),
-              ),
+            // Röleler — her zaman 8 slot, aktif sayısı provider'dan
+            _SectionHeader(
+              title: 'Röleler',
+              icon: Icons.toggle_on_rounded,
+              color: AppColors.warning,
+              active: activeRelayCount,
+              max: kMaxRelays,
+            ),
+            SizedBox(height: 12.h),
+            _RelayList(device: device),
+            SizedBox(height: 24.h),
           ],
         ),
       ),
     );
   }
 }
+
+// ─── Cihaz Bilgi Kartı ───────────────────────────────────────────────────────
 
 class _DeviceInfoCard extends StatelessWidget {
   const _DeviceInfoCard({required this.device});
@@ -161,12 +148,21 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
+// ─── Bölüm Başlığı ───────────────────────────────────────────────────────────
+
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, required this.icon, required this.color, required this.count});
+  const _SectionHeader({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.active,
+    required this.max,
+  });
   final String title;
   final IconData icon;
   final Color color;
-  final int count;
+  final int active;
+  final int max;
 
   @override
   Widget build(BuildContext context) {
@@ -180,17 +176,18 @@ class _SectionHeader extends StatelessWidget {
         SizedBox(width: 10.w),
         Text(title, style: AppTextStyles.headingSmall),
         SizedBox(width: 8.w),
+        // aktif / max
         Container(
           padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
           decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10.r)),
-          child: Text('$count', style: AppTextStyles.labelSmall.copyWith(color: color)),
+          child: Text('$active / $max', style: AppTextStyles.labelSmall.copyWith(color: color)),
         ),
       ],
     );
   }
 }
 
-// ─── Sensör Grid ─────────────────────────────────────────────────────────────
+// ─── Sensör Grid (6 slot) ────────────────────────────────────────────────────
 
 class _SensorGrid extends ConsumerWidget {
   const _SensorGrid({required this.device});
@@ -198,7 +195,8 @@ class _SensorGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final configAsync = ref.watch(sensorConfigsProvider(device.id, device.sensorCount));
+    // Her zaman kMaxSensors (6) slot yükle
+    final configAsync = ref.watch(sensorConfigsProvider(device.id, kMaxSensors));
 
     return configAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -206,88 +204,167 @@ class _SensorGrid extends ConsumerWidget {
       data: (configs) => GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        itemCount: device.sensorCount,
+        itemCount: kMaxSensors,
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
           childAspectRatio: 1.5,
           crossAxisSpacing: 12.w,
           mainAxisSpacing: 12.h,
         ),
-        itemBuilder: (context, i) => _SensorCard(
-          device: device,
-          index: i,
-          config: configs[i],
-        ).animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: i * 60)),
+        itemBuilder: (context, i) {
+          final isActive = i < device.sensorCount;
+          return _SensorCard(
+            device: device,
+            index: i,
+            config: configs[i],
+            isActive: isActive,
+          ).animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: i * 55));
+        },
       ),
     );
   }
 }
 
 class _SensorCard extends ConsumerWidget {
-  const _SensorCard({required this.device, required this.index, required this.config});
+  const _SensorCard({
+    required this.device,
+    required this.index,
+    required this.config,
+    required this.isActive,
+  });
   final DeviceModel device;
   final int index;
   final SensorConfig config;
+  final bool isActive;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final liveData = ref.watch(liveSensorDataProvider(device.id, index));
+    final liveData = isActive ? ref.watch(liveSensorDataProvider(device.id, index)) : <double>[];
     final currentVal = liveData.isEmpty ? 0.0 : liveData.last;
-    final color = config.type.color;
+    final color = isActive ? config.type.color : AppColors.textDisabled;
 
-    final isAboveMax = config.thresholdMax != null && currentVal > config.thresholdMax!;
-    final isBelowMin = config.thresholdMin != null && currentVal < config.thresholdMin!;
+    final isAboveMax = isActive && config.thresholdMax != null && currentVal > config.thresholdMax!;
+    final isBelowMin = isActive && config.thresholdMin != null && currentVal < config.thresholdMin!;
     final isAlert = isAboveMax || isBelowMin;
     final cardColor = isAlert ? AppColors.error : color;
 
     return GestureDetector(
-      onTap: () => showSensorChartSheet(context, device: device, index: index, config: config),
+      onTap: isActive
+          ? () => showSensorChartSheet(context, device: device, index: index, config: config)
+          : () => showSensorConfigSheet(context, ref: ref, device: device, index: index, config: config),
       onLongPress: () => showSensorConfigSheet(context, ref: ref, device: device, index: index, config: config),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.all(12.r),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(14.r),
-          border: Border.all(color: isAlert ? AppColors.error.withValues(alpha: 0.6) : AppColors.border),
+          border: Border.all(
+            color: isActive
+                ? (isAlert ? AppColors.error.withValues(alpha: 0.6) : AppColors.border)
+                : AppColors.border.withValues(alpha: 0.5),
+            width: isActive ? 1 : 1,
+            style: isActive ? BorderStyle.solid : BorderStyle.solid,
+          ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(config.type.icon, color: cardColor, size: 16.r),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => showSensorConfigSheet(context, ref: ref, device: device, index: index, config: config),
-                  child: Icon(Icons.edit_rounded, color: AppColors.textDisabled, size: 14.r),
-                ),
-              ],
-            ),
-            const Spacer(),
-            // Mini sparkline — son 10 nokta
-            SizedBox(
-              height: 18.h,
-              child: _MiniSparkline(data: liveData.length > 10 ? liveData.sublist(liveData.length - 10) : liveData, color: cardColor),
-            ),
-            SizedBox(height: 4.h),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Text(config.name, style: AppTextStyles.labelSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
-                ),
-                Text(
-                  '${currentVal.toStringAsFixed(1)} ${config.unit}',
-                  style: AppTextStyles.mono.copyWith(color: cardColor, fontSize: 11.sp),
-                ),
-              ],
-            ),
-          ],
+        child: isActive ? _ActiveSensorContent(
+          config: config,
+          liveData: liveData,
+          currentVal: currentVal,
+          cardColor: cardColor,
+          onEdit: () => showSensorConfigSheet(context, ref: ref, device: device, index: index, config: config),
+        ) : _InactiveSensorContent(
+          index: index,
+          onConfigure: () => showSensorConfigSheet(context, ref: ref, device: device, index: index, config: config),
         ),
       ),
     );
   }
 }
+
+class _ActiveSensorContent extends StatelessWidget {
+  const _ActiveSensorContent({
+    required this.config,
+    required this.liveData,
+    required this.currentVal,
+    required this.cardColor,
+    required this.onEdit,
+  });
+  final SensorConfig config;
+  final List<double> liveData;
+  final double currentVal;
+  final Color cardColor;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(config.type.icon, color: cardColor, size: 16.r),
+            const Spacer(),
+            GestureDetector(
+              onTap: onEdit,
+              child: Icon(Icons.edit_rounded, color: AppColors.textDisabled, size: 14.r),
+            ),
+          ],
+        ),
+        const Spacer(),
+        SizedBox(
+          height: 18.h,
+          child: _MiniSparkline(
+            data: liveData.length > 10 ? liveData.sublist(liveData.length - 10) : liveData,
+            color: cardColor,
+          ),
+        ),
+        SizedBox(height: 4.h),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Text(config.name, style: AppTextStyles.labelSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            Text(
+              '${currentVal.toStringAsFixed(1)} ${config.unit}',
+              style: AppTextStyles.mono.copyWith(color: cardColor, fontSize: 11.sp),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _InactiveSensorContent extends StatelessWidget {
+  const _InactiveSensorContent({required this.index, required this.onConfigure});
+  final int index;
+  final VoidCallback onConfigure;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.add_circle_outline_rounded, color: AppColors.textDisabled, size: 22.r),
+        SizedBox(height: 6.h),
+        Text(
+          'Kanal ${index + 1}',
+          style: AppTextStyles.labelSmall.copyWith(color: AppColors.textDisabled),
+          textAlign: TextAlign.center,
+        ),
+        Text(
+          'Yapılandır',
+          style: AppTextStyles.labelSmall.copyWith(color: AppColors.primary, fontSize: 10.sp),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Sparkline ───────────────────────────────────────────────────────────────
 
 class _MiniSparkline extends StatelessWidget {
   const _MiniSparkline({required this.data, required this.color});
@@ -340,7 +417,7 @@ class _SparklinePainter extends CustomPainter {
   bool shouldRepaint(_SparklinePainter old) => old.data != data;
 }
 
-// ─── Röle Listesi ─────────────────────────────────────────────────────────────
+// ─── Röle Listesi (8 slot) ───────────────────────────────────────────────────
 
 class _RelayList extends ConsumerWidget {
   const _RelayList({required this.device});
@@ -348,7 +425,8 @@ class _RelayList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final relays = ref.watch(relayStatesProvider(device.id, device.relayCount));
+    final relays = ref.watch(relayStatesProvider(device.id, kMaxRelays));
+    final notifier = ref.read(relayStatesProvider(device.id, kMaxRelays).notifier);
 
     return Container(
       decoration: BoxDecoration(
@@ -357,57 +435,210 @@ class _RelayList extends ConsumerWidget {
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
-        children: List.generate(device.relayCount, (i) {
+        children: List.generate(kMaxRelays, (i) {
           final relay = relays[i];
-          final isLast = i == device.relayCount - 1;
+          final isLast = i == kMaxRelays - 1;
+
           return Column(
             children: [
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-                child: Row(
+              _RelayRow(
+                index: i,
+                relay: relay,
+                onToggle: () => notifier.toggle(i),
+                onEnable: () => notifier.setEnabled(i, true),
+                onDisable: () => notifier.setEnabled(i, false),
+                onRename: (name) => notifier.rename(i, name),
+              ).animate(delay: Duration(milliseconds: i * 40)).fadeIn(duration: 220.ms),
+              if (!isLast) Divider(height: 1, color: AppColors.divider, indent: 16.w),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+}
+
+class _RelayRow extends StatelessWidget {
+  const _RelayRow({
+    required this.index,
+    required this.relay,
+    required this.onToggle,
+    required this.onEnable,
+    required this.onDisable,
+    required this.onRename,
+  });
+  final int index;
+  final RelayConfig relay;
+  final VoidCallback onToggle;
+  final VoidCallback onEnable;
+  final VoidCallback onDisable;
+  final ValueChanged<String> onRename;
+
+  void _showRenameDialog(BuildContext context) {
+    final controller = TextEditingController(text: relay.name);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text('Röle ${index + 1} Adı', style: AppTextStyles.headingSmall),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: AppTextStyles.bodyMedium.copyWith(color: Theme.of(context).colorScheme.onSurface),
+          decoration: InputDecoration(
+            hintText: 'örn: Su Pompası, Fan, Işık...',
+            hintStyle: AppTextStyles.bodySmall,
+          ),
+          onSubmitted: (v) {
+            onRename(v);
+            Navigator.of(ctx).pop();
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('İptal', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () {
+              onRename(controller.text);
+              Navigator.of(ctx).pop();
+            },
+            child: Text('Kaydet', style: AppTextStyles.bodySmall.copyWith(color: AppColors.primary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEnabled = relay.isEnabled;
+    final iconColor = isEnabled && relay.isOn ? AppColors.warning : AppColors.textDisabled;
+
+    return GestureDetector(
+      onLongPress: isEnabled ? () => _showRenameDialog(context) : null,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 200),
+        opacity: isEnabled ? 1.0 : 0.55,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+          child: Row(
+            children: [
+              // İkon
+              Container(
+                width: 36.r, height: 36.r,
+                decoration: BoxDecoration(
+                  color: isEnabled && relay.isOn
+                      ? AppColors.warning.withValues(alpha: 0.15)
+                      : AppColors.border.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(9.r),
+                ),
+                child: Icon(
+                  relay.isOn ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,
+                  color: iconColor,
+                  size: 22.r,
+                ),
+              ),
+              SizedBox(width: 14.w),
+
+              // İsim + kanal
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 36.r, height: 36.r,
-                      decoration: BoxDecoration(
-                        color: relay.isOn
-                            ? AppColors.warning.withValues(alpha: 0.15)
-                            : AppColors.border.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(9.r),
-                      ),
-                      child: Icon(
-                        relay.isOn ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,
-                        color: relay.isOn ? AppColors.warning : AppColors.textDisabled,
-                        size: 22.r,
-                      ),
-                    ),
-                    SizedBox(width: 14.w),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(relay.name, style: AppTextStyles.bodyMedium.copyWith(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontWeight: FontWeight.w500,
-                          )),
-                          Text('Kanal ${i + 1}', style: AppTextStyles.labelSmall),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            relay.name,
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: isEnabled
+                                  ? Theme.of(context).colorScheme.onSurface
+                                  : AppColors.textDisabled,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isEnabled) ...[
+                          SizedBox(width: 4.w),
+                          GestureDetector(
+                            onTap: () => _showRenameDialog(context),
+                            child: Icon(Icons.edit_rounded, size: 13.r, color: AppColors.textDisabled),
+                          ),
                         ],
-                      ),
+                      ],
                     ),
-                    Switch(
-                      value: relay.isOn,
-                      onChanged: (_) => ref.read(relayStatesProvider(device.id, device.relayCount).notifier).toggle(i),
-                      activeTrackColor: AppColors.warning,
-                      activeThumbColor: Colors.white,
-                      inactiveThumbColor: AppColors.textDisabled,
-                      inactiveTrackColor: AppColors.border,
+                    Text(
+                      isEnabled ? 'Kanal ${index + 1}' : 'Pasif — etkinleştirmek için dokun',
+                      style: AppTextStyles.labelSmall,
                     ),
                   ],
                 ),
               ),
-              if (!isLast) Divider(height: 1, color: AppColors.divider, indent: 16.w),
+              SizedBox(width: 8.w),
+
+              // Sağ taraf: aktifse Switch, değilse Etkinleştir butonu
+              if (isEnabled) ...[
+                GestureDetector(
+                  onLongPress: () => _confirmDisable(context),
+                  child: Switch(
+                    value: relay.isOn,
+                    onChanged: (_) => onToggle(),
+                    activeTrackColor: AppColors.warning,
+                    activeThumbColor: Colors.white,
+                    inactiveThumbColor: AppColors.textDisabled,
+                    inactiveTrackColor: AppColors.border,
+                  ),
+                ),
+              ] else
+                GestureDetector(
+                  onTap: onEnable,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8.r),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                    ),
+                    child: Text(
+                      'Ekle',
+                      style: AppTextStyles.labelSmall.copyWith(color: AppColors.primary),
+                    ),
+                  ),
+                ),
             ],
-          );
-        }).animate(interval: 50.ms).fadeIn(duration: 250.ms),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _confirmDisable(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text('Kanalı Pasife Al', style: AppTextStyles.headingSmall),
+        content: Text(
+          '"${relay.name}" kanalını pasife almak istiyor musunuz?',
+          style: AppTextStyles.bodySmall,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('İptal', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () {
+              onDisable();
+              Navigator.of(ctx).pop();
+            },
+            child: Text('Pasife Al', style: AppTextStyles.bodySmall.copyWith(color: AppColors.error)),
+          ),
+        ],
       ),
     );
   }

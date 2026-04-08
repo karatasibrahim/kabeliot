@@ -16,7 +16,7 @@
         android:usesPermissionFlags="neverForLocation" />
 
     <application
-        android:label="kabeliot_app"
+        android:label="Kabel Core"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">

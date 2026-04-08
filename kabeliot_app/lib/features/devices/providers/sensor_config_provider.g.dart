@@ -6,7 +6,7 @@ part of 'sensor_config_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$sensorConfigsHash() => r'6526fbbff8d72132d5f7b6e10dd9c803ee38c093';
+String _$sensorConfigsHash() => r'540af59c36cb1203513adf7fc15ef8d9d1258f93';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -37,24 +37,16 @@ abstract class _$SensorConfigs
   FutureOr<List<SensorConfig>> build(String deviceId, int sensorCount);
 }
 
-/// Belirli bir cihazın tüm sensörlerinin kullanıcı yapılandırmaları
-///
-/// Copied from [SensorConfigs].
+/// See also [SensorConfigs].
 @ProviderFor(SensorConfigs)
 const sensorConfigsProvider = SensorConfigsFamily();
 
-/// Belirli bir cihazın tüm sensörlerinin kullanıcı yapılandırmaları
-///
-/// Copied from [SensorConfigs].
+/// See also [SensorConfigs].
 class SensorConfigsFamily extends Family<AsyncValue<List<SensorConfig>>> {
-  /// Belirli bir cihazın tüm sensörlerinin kullanıcı yapılandırmaları
-  ///
-  /// Copied from [SensorConfigs].
+  /// See also [SensorConfigs].
   const SensorConfigsFamily();
 
-  /// Belirli bir cihazın tüm sensörlerinin kullanıcı yapılandırmaları
-  ///
-  /// Copied from [SensorConfigs].
+  /// See also [SensorConfigs].
   SensorConfigsProvider call(String deviceId, int sensorCount) {
     return SensorConfigsProvider(deviceId, sensorCount);
   }
@@ -81,18 +73,14 @@ class SensorConfigsFamily extends Family<AsyncValue<List<SensorConfig>>> {
   String? get name => r'sensorConfigsProvider';
 }
 
-/// Belirli bir cihazın tüm sensörlerinin kullanıcı yapılandırmaları
-///
-/// Copied from [SensorConfigs].
+/// See also [SensorConfigs].
 class SensorConfigsProvider
     extends
         AutoDisposeAsyncNotifierProviderImpl<
           SensorConfigs,
           List<SensorConfig>
         > {
-  /// Belirli bir cihazın tüm sensörlerinin kullanıcı yapılandırmaları
-  ///
-  /// Copied from [SensorConfigs].
+  /// See also [SensorConfigs].
   SensorConfigsProvider(String deviceId, int sensorCount)
     : this._internal(
         () => SensorConfigs()
@@ -199,7 +187,7 @@ class _SensorConfigsProviderElement
   int get sensorCount => (origin as SensorConfigsProvider).sensorCount;
 }
 
-String _$relayStatesHash() => r'686041db6f035994e46b7624cf4bff30dd6d8ed8';
+String _$relayStatesHash() => r'5fa1b7bee03871b4255c22297da2152841a88795';
 
 abstract class _$RelayStates
     extends BuildlessAutoDisposeNotifier<List<RelayConfig>> {
@@ -209,24 +197,16 @@ abstract class _$RelayStates
   List<RelayConfig> build(String deviceId, int relayCount);
 }
 
-/// Röle durumları — toggle MQTT'ye publish eder, optimistic local güncelleme yapar
-///
-/// Copied from [RelayStates].
+/// See also [RelayStates].
 @ProviderFor(RelayStates)
 const relayStatesProvider = RelayStatesFamily();
 
-/// Röle durumları — toggle MQTT'ye publish eder, optimistic local güncelleme yapar
-///
-/// Copied from [RelayStates].
+/// See also [RelayStates].
 class RelayStatesFamily extends Family<List<RelayConfig>> {
-  /// Röle durumları — toggle MQTT'ye publish eder, optimistic local güncelleme yapar
-  ///
-  /// Copied from [RelayStates].
+  /// See also [RelayStates].
   const RelayStatesFamily();
 
-  /// Röle durumları — toggle MQTT'ye publish eder, optimistic local güncelleme yapar
-  ///
-  /// Copied from [RelayStates].
+  /// See also [RelayStates].
   RelayStatesProvider call(String deviceId, int relayCount) {
     return RelayStatesProvider(deviceId, relayCount);
   }
@@ -253,14 +233,10 @@ class RelayStatesFamily extends Family<List<RelayConfig>> {
   String? get name => r'relayStatesProvider';
 }
 
-/// Röle durumları — toggle MQTT'ye publish eder, optimistic local güncelleme yapar
-///
-/// Copied from [RelayStates].
+/// See also [RelayStates].
 class RelayStatesProvider
     extends AutoDisposeNotifierProviderImpl<RelayStates, List<RelayConfig>> {
-  /// Röle durumları — toggle MQTT'ye publish eder, optimistic local güncelleme yapar
-  ///
-  /// Copied from [RelayStates].
+  /// See also [RelayStates].
   RelayStatesProvider(String deviceId, int relayCount)
     : this._internal(
         () => RelayStates()

@@ -6,7 +6,7 @@ part of 'live_data_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$liveSensorDataHash() => r'fcd9b3c980b8a2fa156ff9a0e2f0d3af6e198db1';
+String _$liveSensorDataHash() => r'830bc8590ed70f8d78d7682d626608137d46a7b8';
 
 /// Copied from Dart SDK
 class _SystemHash {

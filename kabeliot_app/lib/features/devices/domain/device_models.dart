@@ -140,12 +140,17 @@ class SensorConfig {
 
 /// Röle yapılandırması
 class RelayConfig {
-  const RelayConfig({required this.name, this.isOn = false});
+  const RelayConfig({required this.name, this.isOn = false, this.isEnabled = false});
   final String name;
   final bool isOn;
+  final bool isEnabled; // kullanıcı bu kanalı aktif etti mi?
 
-  RelayConfig copyWith({String? name, bool? isOn}) =>
-      RelayConfig(name: name ?? this.name, isOn: isOn ?? this.isOn);
+  RelayConfig copyWith({String? name, bool? isOn, bool? isEnabled}) =>
+      RelayConfig(
+        name: name ?? this.name,
+        isOn: isOn ?? this.isOn,
+        isEnabled: isEnabled ?? this.isEnabled,
+      );
 }
 
 /// Mock cihaz modeli
@@ -174,6 +179,10 @@ class DeviceModel {
 
   String get mqttTopic => 'kb/${id.toLowerCase()}';
 }
+
+/// Donanım limitleri
+const kMaxSensors = 6;
+const kMaxRelays = 8;
 
 /// Uygulama genelinde mock cihaz listesi
 final mockDeviceList = [
