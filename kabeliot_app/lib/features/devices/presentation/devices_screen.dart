@@ -210,6 +210,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
         isOnline: d.isOnline,
         sensorCount: kMaxSensors,
         relayCount: kMaxRelays,
+        tbDeviceId: d.tbDeviceId,
       );
 
   Widget _buildEmpty() {

@@ -42,17 +42,18 @@ class ProvisioningRequest {
     required this.wifiPassword,
     required this.mqttHost,
     required this.mqttPort,
-    this.mqttUser = '',
-    this.mqttPassword = '',
+    required this.tbAccessToken,
   });
 
   final String deviceName;
   final String wifiSsid;
   final String wifiPassword;
+  /// ThingsBoard MQTT broker host (e.g. smartio.kabelteknoloji.com)
   final String mqttHost;
+  /// ThingsBoard MQTT port (1883)
   final int mqttPort;
-  final String mqttUser;
-  final String mqttPassword;
+  /// ThingsBoard device access token — used as MQTT username; password is empty.
+  final String tbAccessToken;
 
   Map<String, dynamic> toJson() => {
         'deviceName': deviceName,
@@ -60,8 +61,8 @@ class ProvisioningRequest {
         'wifiPassword': wifiPassword,
         'mqttHost': mqttHost,
         'mqttPort': mqttPort,
-        'mqttUser': mqttUser,
-        'mqttPassword': mqttPassword,
+        'mqttUser': tbAccessToken,
+        'mqttPassword': '',
       };
 }
 

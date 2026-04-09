@@ -2,16 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../core/firebase/device_repository.dart';
-import '../../../shared/providers/auth_state_provider.dart';
+import '../../../core/thingsboard/tb_auth_provider.dart';
+import '../../../core/thingsboard/tb_websocket_service.dart';
 import '../domain/device_models.dart';
 
 part 'sensor_config_provider.g.dart';
 
 String _sensorKey(String deviceId, int index) => 'sc_${deviceId}_$index';
-String _relayKey(String deviceId, int index) => 'rc_${deviceId}_$index';
-
-final _repo = DeviceRepository();
+String _relayKey(String deviceId, int index)  => 'rc_${deviceId}_$index';
 
 // ─── Sensör Yapılandırması (SharedPreferences — kullanıcı tercihleri) ─────────
 
@@ -42,21 +40,20 @@ class SensorConfigs extends _$SensorConfigs {
   }
 }
 
-// ─── Röle Durumları — Firestore + SharedPreferences ──────────────────────────
+// ─── Röle Durumları — ThingsBoard WebSocket + RPC ────────────────────────────
 
 @riverpod
 class RelayStates extends _$RelayStates {
-  StreamSubscription<List<FirestoreRelay>>? _firestoreSub;
+  StreamSubscription<Map<String, dynamic>>? _wsSub;
 
   @override
   List<RelayConfig> build(String deviceId, int relayCount) {
     _loadFromPrefs();
-    _subscribeFirestore();
-    ref.onDispose(() => _firestoreSub?.cancel());
+    _subscribeTb();
+    ref.onDispose(() => _wsSub?.cancel());
     return List.generate(relayCount, (i) => RelayConfig(name: 'Röle ${i + 1}'));
   }
 
-  /// SharedPreferences'tan isim ve enabled durumunu yükle
   Future<void> _loadFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final updated = List<RelayConfig>.from(state);
@@ -75,21 +72,19 @@ class RelayStates extends _$RelayStates {
     state = updated;
   }
 
-  /// Firestore'daki relay_status değişikliklerini dinle
-  void _subscribeFirestore() {
-    final session = ref.read(authStateProvider);
-    if (session == null) return;
+  void _subscribeTb() {
+    final tbWs = ref.read(tbWebSocketServiceProvider);
+    final keys = List.generate(state.length, (i) => 'relay_$i');
 
-    _firestoreSub?.cancel();
-    _firestoreSub = _repo
-        .watchRelays(session.companyId, deviceId)
-        .listen((firestoreRelays) {
+    _wsSub?.cancel();
+    _wsSub = tbWs.subscribeToTelemetry(deviceId, keys).listen((data) {
       final updated = List<RelayConfig>.from(state);
-      for (int i = 0; i < firestoreRelays.length && i < updated.length; i++) {
-        updated[i] = updated[i].copyWith(isOn: firestoreRelays[i].relayStatus);
-        // Firestore'daki relay_name'i de kullan (eğer SharedPrefs'te özel isim yoksa)
-        if (updated[i].name == 'Röle ${i + 1}' && firestoreRelays[i].relayName.isNotEmpty) {
-          updated[i] = updated[i].copyWith(name: firestoreRelays[i].relayName);
+      for (int i = 0; i < updated.length; i++) {
+        final key = 'relay_$i';
+        if (data.containsKey(key)) {
+          final raw = data[key];
+          final isOn = raw is bool ? raw : (raw == 1 || raw == true);
+          updated[i] = updated[i].copyWith(isOn: isOn);
         }
       }
       state = updated;
@@ -100,37 +95,23 @@ class RelayStates extends _$RelayStates {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _relayKey(deviceId, index),
-      jsonEncode({
-        'name': state[index].name,
-        'isEnabled': state[index].isEnabled,
-      }),
+      jsonEncode({'name': state[index].name, 'isEnabled': state[index].isEnabled}),
     );
   }
 
   void toggle(int index) {
     if (!state[index].isEnabled) return;
-    final session = ref.read(authStateProvider);
 
     final updated = List<RelayConfig>.from(state);
     final newIsOn = !updated[index].isOn;
     updated[index] = updated[index].copyWith(isOn: newIsOn);
-    state = updated;
+    state = updated; // optimistic update
 
-    // Firestore'a yaz (optimistic — state zaten güncellendi)
-    if (session != null && index < _firestoreRelayIds.length) {
-      _repo.updateRelayStatus(
-        session.companyId,
-        deviceId,
-        _firestoreRelayIds[index],
-        newIsOn,
-      );
-    }
+    // TB RPC
+    final client = ref.read(tbAuthProvider.notifier).apiClient();
+    client?.sendRpc(deviceId, 'setRelayState', {'relay': index, 'state': newIsOn});
   }
 
-  // Firestore'dan gelen relay doc ID'lerini tut (toggle için gerekli)
-  final List<String> _firestoreRelayIds = [];
-
-  /// Kanalı aktif / pasif yap
   Future<void> setEnabled(int index, bool enabled) async {
     final updated = List<RelayConfig>.from(state);
     updated[index] = updated[index].copyWith(isEnabled: enabled, isOn: false);
@@ -138,7 +119,6 @@ class RelayStates extends _$RelayStates {
     await _saveRelay(index);
   }
 
-  /// Röle adını değiştir
   Future<void> rename(int index, String name) async {
     final updated = List<RelayConfig>.from(state);
     updated[index] = updated[index].copyWith(

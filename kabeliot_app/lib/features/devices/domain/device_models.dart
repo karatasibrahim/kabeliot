@@ -166,6 +166,7 @@ class DeviceModel {
     required this.relayCount,
     this.firmware = '1.2.0',
     this.ipAddress = '192.168.1.100',
+    this.tbDeviceId,
   });
 
   final String id;
@@ -177,6 +178,8 @@ class DeviceModel {
   final int relayCount;
   final String firmware;
   final String ipAddress;
+  /// ThingsBoard device UUID — used for WebSocket subscriptions and RPC calls
+  final String? tbDeviceId;
 
   String get mqttTopic => 'kb/${id.toLowerCase()}';
 }
@@ -194,12 +197,15 @@ class FirestoreDevice {
     required this.deviceStatus,
     this.deviceName,
     this.lastSeen,
+    this.tbDeviceId,
   });
 
   final String id;
   final bool deviceStatus;
   final String? deviceName;
   final DateTime? lastSeen;
+  /// ThingsBoard device UUID — set during provisioning
+  final String? tbDeviceId;
 
   bool get isOnline => deviceStatus;
 
@@ -210,6 +216,7 @@ class FirestoreDevice {
       deviceStatus: (d['device_status'] as bool?) ?? false,
       deviceName: d['device_name'] as String?,
       lastSeen: (d['last_seen'] as Timestamp?)?.toDate(),
+      tbDeviceId: d['tb_device_id'] as String?,
     );
   }
 }

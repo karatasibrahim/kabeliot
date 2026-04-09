@@ -7,6 +7,8 @@ import 'package:wifi_scan/wifi_scan.dart';
 import '../../../core/firebase/device_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/thingsboard/tb_auth_provider.dart';
+import '../../../core/thingsboard/tb_settings_provider.dart';
 import '../../../shared/providers/auth_state_provider.dart';
 import '../../../shared/widgets/gradient_scaffold.dart';
 import '../../../shared/widgets/kabel_button.dart';
@@ -17,9 +19,6 @@ import '../data/provisioning_service.dart';
 const _kabelPrefix = 'KABEL-';
 // ESP32 AP modundaki fabrika WiFi şifresi
 const _esp32ApPassword = 'kabel2024!';
-// MQTT sunucu varsayılanları
-const _defaultMqttHost = 'mqtt.kabelteknoloji.com';
-const _defaultMqttPort = 1883;
 
 /// wifi_scan'dan bağımsız basit AP bilgisi — mock ve gerçek için ortak model
 class _KabelApInfo {
@@ -57,16 +56,14 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
   final _deviceNameCtrl = TextEditingController();
   final _factorySsidCtrl = TextEditingController();
   final _factoryPassCtrl = TextEditingController();
-  final _mqttHostCtrl = TextEditingController(text: _defaultMqttHost);
-  final _mqttPortCtrl = TextEditingController(text: '$_defaultMqttPort');
-  final _mqttUserCtrl = TextEditingController();
-  final _mqttPassCtrl = TextEditingController();
-  bool _showMqttAdvanced = false;
 
   // Adım 3 — Provision
   bool _isProvisioning = false;
   bool _provisionSuccess = false;
   String? _provisionError;
+
+  // Adım 3 — TB cihaz ID (provision sonrası Firestore'a kaydedilecek)
+  String? _tbDeviceId;
 
   // Adım 3 — Firestore kayıt (provision'dan bağımsız, internete geçince)
   bool _isSavingToFirestore = false;
@@ -81,10 +78,6 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
     _deviceNameCtrl.dispose();
     _factorySsidCtrl.dispose();
     _factoryPassCtrl.dispose();
-    _mqttHostCtrl.dispose();
-    _mqttPortCtrl.dispose();
-    _mqttUserCtrl.dispose();
-    _mqttPassCtrl.dispose();
     super.dispose();
   }
 
@@ -200,15 +193,30 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
     });
 
     try {
+      final deviceName = _deviceNameCtrl.text.trim();
+      final tbSettings = ref.read(tbSettingsNotifierProvider).valueOrNull;
+      final tbClient   = ref.read(tbAuthProvider.notifier).apiClient();
+
+      String tbAccessToken = '';
+      String tbDevId = '';
+
+      if (!_mockMode && tbClient != null) {
+        final tbDevice = await tbClient.createDevice(deviceName);
+        tbDevId = tbDevice.id;
+        final creds = await tbClient.getDeviceCredentials(tbDevId);
+        tbAccessToken = creds.credentialsId;
+      }
+
+      _tbDeviceId = tbDevId.isNotEmpty ? tbDevId : null;
+
       final service = _mockMode ? ProvisioningService.mock : ProvisioningService.real;
       await service.provision(ProvisioningRequest(
-        deviceName: _deviceNameCtrl.text.trim(),
+        deviceName: deviceName,
         wifiSsid: _factorySsidCtrl.text.trim(),
         wifiPassword: _factoryPassCtrl.text,
-        mqttHost: _mqttHostCtrl.text.trim(),
-        mqttPort: int.tryParse(_mqttPortCtrl.text.trim()) ?? _defaultMqttPort,
-        mqttUser: _mqttUserCtrl.text.trim(),
-        mqttPassword: _mqttPassCtrl.text,
+        mqttHost: tbSettings?.host ?? tbDefaultHost,
+        mqttPort: 1883,
+        tbAccessToken: tbAccessToken,
       ));
 
       if (!mounted) return;
@@ -240,6 +248,7 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
         session.companyId,
         _deviceInfo!.chipId,
         _deviceNameCtrl.text.trim(),
+        tbDeviceId: _tbDeviceId,
       );
       if (!mounted) return;
       setState(() {
@@ -335,13 +344,6 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
                         deviceNameCtrl: _deviceNameCtrl,
                         factorySsidCtrl: _factorySsidCtrl,
                         factoryPassCtrl: _factoryPassCtrl,
-                        mqttHostCtrl: _mqttHostCtrl,
-                        mqttPortCtrl: _mqttPortCtrl,
-                        mqttUserCtrl: _mqttUserCtrl,
-                        mqttPassCtrl: _mqttPassCtrl,
-                        showMqttAdvanced: _showMqttAdvanced,
-                        onToggleAdvanced: () =>
-                            setState(() => _showMqttAdvanced = !_showMqttAdvanced),
                         onProvision: _provision,
                         onRetry: _selectedAp != null
                             ? () => _selectAndConnect(_selectedAp!)
@@ -353,7 +355,6 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
                         success: _provisionSuccess,
                         error: _provisionError,
                         deviceName: _deviceNameCtrl.text,
-                        mqttHost: _mqttHostCtrl.text,
                         isSavingToFirestore: _isSavingToFirestore,
                         firebaseSaved: _firebaseSaved,
                         firebaseSaveError: _firebaseSaveError,
@@ -576,12 +577,6 @@ class _Step2Config extends StatelessWidget {
     required this.deviceNameCtrl,
     required this.factorySsidCtrl,
     required this.factoryPassCtrl,
-    required this.mqttHostCtrl,
-    required this.mqttPortCtrl,
-    required this.mqttUserCtrl,
-    required this.mqttPassCtrl,
-    required this.showMqttAdvanced,
-    required this.onToggleAdvanced,
     required this.onProvision,
     required this.onRetry,
   });
@@ -594,12 +589,6 @@ class _Step2Config extends StatelessWidget {
   final TextEditingController deviceNameCtrl;
   final TextEditingController factorySsidCtrl;
   final TextEditingController factoryPassCtrl;
-  final TextEditingController mqttHostCtrl;
-  final TextEditingController mqttPortCtrl;
-  final TextEditingController mqttUserCtrl;
-  final TextEditingController mqttPassCtrl;
-  final bool showMqttAdvanced;
-  final VoidCallback onToggleAdvanced;
   final VoidCallback onProvision;
   final VoidCallback? onRetry;
 
@@ -666,71 +655,6 @@ class _Step2Config extends StatelessWidget {
             validator: (v) =>
                 (v == null || v.isEmpty) ? 'Şifre gerekli' : null,
           ),
-          SizedBox(height: 20.h),
-
-          _SectionLabel('MQTT Sunucu'),
-          SizedBox(height: 10.h),
-          KabelTextField(
-            label: 'MQTT Host',
-            hint: _defaultMqttHost,
-            controller: mqttHostCtrl,
-            prefixIcon: Icons.dns_rounded,
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'MQTT host gerekli' : null,
-          ),
-          SizedBox(height: 12.h),
-          KabelTextField(
-            label: 'Port',
-            hint: '$_defaultMqttPort',
-            controller: mqttPortCtrl,
-            prefixIcon: Icons.numbers_rounded,
-            keyboardType: TextInputType.number,
-            validator: (v) {
-              final p = int.tryParse(v ?? '');
-              if (p == null || p < 1 || p > 65535) {
-                return 'Geçerli port (1-65535)';
-              }
-              return null;
-            },
-          ),
-          SizedBox(height: 8.h),
-
-          GestureDetector(
-            onTap: onToggleAdvanced,
-            child: Row(
-              children: [
-                Icon(
-                  showMqttAdvanced
-                      ? Icons.expand_less_rounded
-                      : Icons.expand_more_rounded,
-                  color: AppColors.primary,
-                  size: 18.r,
-                ),
-                SizedBox(width: 4.w),
-                Text(
-                  'Gelişmiş MQTT (Kullanıcı / Şifre)',
-                  style: AppTextStyles.bodySmall
-                      .copyWith(color: AppColors.primary),
-                ),
-              ],
-            ),
-          ),
-          if (showMqttAdvanced) ...[
-            SizedBox(height: 10.h),
-            KabelTextField(
-              label: 'MQTT Kullanıcı',
-              controller: mqttUserCtrl,
-              prefixIcon: Icons.person_outline_rounded,
-            ),
-            SizedBox(height: 12.h),
-            KabelTextField(
-              label: 'MQTT Şifre',
-              controller: mqttPassCtrl,
-              prefixIcon: Icons.vpn_key_rounded,
-              isObscure: true,
-            ),
-          ],
-
           SizedBox(height: 28.h),
           KabelButton(
             label: 'Cihazı Yapılandır ve Bağla',
@@ -753,7 +677,6 @@ class _Step3Result extends StatelessWidget {
     required this.success,
     required this.error,
     required this.deviceName,
-    required this.mqttHost,
     required this.isSavingToFirestore,
     required this.firebaseSaved,
     required this.firebaseSaveError,
@@ -766,7 +689,6 @@ class _Step3Result extends StatelessWidget {
   final bool success;
   final String? error;
   final String deviceName;
-  final String mqttHost;
   final bool isSavingToFirestore;
   final bool firebaseSaved;
   final String? firebaseSaveError;
@@ -840,13 +762,9 @@ class _Step3Result extends StatelessWidget {
           ),
           child: Column(
             children: [
-              _MqttInfoRow(label: 'Sunucu', value: mqttHost),
+              _MqttInfoRow(label: 'Sunucu', value: 'smartio.kabelteknoloji.com:1883'),
               SizedBox(height: 6.h),
-              _MqttInfoRow(
-                label: 'Topic',
-                value:
-                    'kb/${deviceName.toLowerCase().replaceAll(' ', '_')}/#',
-              ),
+              _MqttInfoRow(label: 'Protokol', value: 'ThingsBoard MQTT'),
             ],
           ),
         ).animate().fadeIn(delay: 400.ms),

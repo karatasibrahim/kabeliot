@@ -6,7 +6,7 @@ part of 'live_data_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$liveSensorDataHash() => r'2c5cf8ac96437342a4b7a7ac83887f76456235b8';
+String _$liveSensorDataHash() => r'c75dc79bb09ced363aa48763c5aad63706d63749';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -37,22 +37,26 @@ abstract class _$LiveSensorData
   List<double> build(String deviceId, int sensorIndex);
 }
 
-/// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
+/// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+/// [deviceId] ThingsBoard device UUID'si.
 ///
 /// Copied from [LiveSensorData].
 @ProviderFor(LiveSensorData)
 const liveSensorDataProvider = LiveSensorDataFamily();
 
-/// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
+/// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+/// [deviceId] ThingsBoard device UUID'si.
 ///
 /// Copied from [LiveSensorData].
 class LiveSensorDataFamily extends Family<List<double>> {
-  /// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
+  /// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+  /// [deviceId] ThingsBoard device UUID'si.
   ///
   /// Copied from [LiveSensorData].
   const LiveSensorDataFamily();
 
-  /// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
+  /// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+  /// [deviceId] ThingsBoard device UUID'si.
   ///
   /// Copied from [LiveSensorData].
   LiveSensorDataProvider call(String deviceId, int sensorIndex) {
@@ -81,12 +85,14 @@ class LiveSensorDataFamily extends Family<List<double>> {
   String? get name => r'liveSensorDataProvider';
 }
 
-/// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
+/// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+/// [deviceId] ThingsBoard device UUID'si.
 ///
 /// Copied from [LiveSensorData].
 class LiveSensorDataProvider
     extends AutoDisposeNotifierProviderImpl<LiveSensorData, List<double>> {
-  /// Belirli bir sensörün son 60 değeri — Firestore snapshot'larından beslenir.
+  /// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+  /// [deviceId] ThingsBoard device UUID'si.
   ///
   /// Copied from [LiveSensorData].
   LiveSensorDataProvider(String deviceId, int sensorIndex)

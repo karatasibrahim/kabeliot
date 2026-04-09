@@ -18,7 +18,7 @@ class DeviceDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusColor = device.isOnline ? AppColors.success : AppColors.error;
-    final relays = ref.watch(relayStatesProvider(device.id, kMaxRelays));
+    final relays = ref.watch(relayStatesProvider(device.tbDeviceId ?? device.id, kMaxRelays));
     final activeRelayCount = relays.where((r) => r.isEnabled).length;
 
     return GradientScaffold(
@@ -104,7 +104,7 @@ class _DeviceInfoCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _InfoRow(label: 'Cihaz ID', value: device.id, mono: true),
+          _InfoRow(label: 'Cihaz ID', value: device.tbDeviceId ?? device.id, mono: true),
           _InfoRow(label: 'Tür', value: device.type),
           _InfoRow(label: 'IP Adresi', value: device.ipAddress, mono: true),
           _InfoRow(label: 'Firmware', value: device.firmware, mono: true),
@@ -196,7 +196,7 @@ class _SensorGrid extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Her zaman kMaxSensors (6) slot yükle
-    final configAsync = ref.watch(sensorConfigsProvider(device.id, kMaxSensors));
+    final configAsync = ref.watch(sensorConfigsProvider(device.tbDeviceId ?? device.id, kMaxSensors));
 
     return configAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -239,7 +239,7 @@ class _SensorCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final liveData = isActive ? ref.watch(liveSensorDataProvider(device.id, index)) : <double>[];
+    final liveData = isActive ? ref.watch(liveSensorDataProvider(device.tbDeviceId ?? device.id, index)) : <double>[];
     final currentVal = liveData.isEmpty ? 0.0 : liveData.last;
     final color = isActive ? config.type.color : AppColors.textDisabled;
 
@@ -425,8 +425,8 @@ class _RelayList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final relays = ref.watch(relayStatesProvider(device.id, kMaxRelays));
-    final notifier = ref.read(relayStatesProvider(device.id, kMaxRelays).notifier);
+    final relays = ref.watch(relayStatesProvider(device.tbDeviceId ?? device.id, kMaxRelays));
+    final notifier = ref.read(relayStatesProvider(device.tbDeviceId ?? device.id, kMaxRelays).notifier);
 
     return Container(
       decoration: BoxDecoration(
