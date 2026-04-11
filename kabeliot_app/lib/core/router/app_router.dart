@@ -7,11 +7,11 @@ import '../../features/auth/presentation/login/login_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
 import '../../features/devices/presentation/devices_screen.dart';
 import '../../features/devices/presentation/add_device_screen.dart';
+import '../../features/devices/presentation/provisioning_screen.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/profile/presentation/app_settings_screen.dart';
 import '../../features/profile/presentation/notification_settings_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
-import '../../features/profile/presentation/settings_screen.dart';
 import '../../features/devices/presentation/device_detail_screen.dart';
 import '../../features/devices/domain/device_models.dart';
 import '../../shared/providers/auth_state_provider.dart';
@@ -61,6 +61,7 @@ GoRouter appRouter(Ref ref) {
               builder: (_, __) => const DevicesScreen(),
               routes: [
                 GoRoute(path: 'add', builder: (_, __) => const AddDeviceScreen()),
+                GoRoute(path: 'provisioning', builder: (_, __) => const ProvisioningScreen()),
                 GoRoute(
                   path: 'detail',
                   builder: (_, state) {
@@ -79,7 +80,6 @@ GoRouter appRouter(Ref ref) {
               path: AppRoutes.profile,
               builder: (_, __) => const ProfileScreen(),
               routes: [
-                GoRoute(path: 'settings', builder: (_, __) => const SettingsScreen()),
                 GoRoute(path: 'notification-settings', builder: (_, __) => const NotificationSettingsScreen()),
                 GoRoute(path: 'app-settings', builder: (_, __) => const AppSettingsScreen()),
               ],

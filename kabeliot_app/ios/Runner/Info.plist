@@ -45,5 +45,43 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- ── İzin Açıklamaları ────────────────────────────────────────────── -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>KABEL cihazlarını WiFi üzerinden keşfetmek için konum iznine ihtiyaç duyulmaktadır.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>ESP32 cihazının AP moduna bağlanmak ve yapılandırma göndermek için yerel ağ erişimi gereklidir.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>KABEL cihazlarını WiFi üzerinden keşfetmek için konum iznine ihtiyaç duyulmaktadır.</string>
+
+	<!-- ── App Transport Security — HTTP ve ws:// için ──────────────────── -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- ThingsBoard sunucusu HTTP üzerinden çalışıyor -->
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>smartio.kabelteknoloji.com</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionMinimumTLSVersion</key>
+				<string>TLSv1.0</string>
+			</dict>
+			<!-- ESP32 AP adresi — provisioning HTTP isteği -->
+			<key>192.168.4.1</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+
+	<!-- ── Bonjour / Local Network discovery ────────────────────────────── -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
 </dict>
 </plist>

@@ -19,4 +19,10 @@ class CompanyRepository {
     final role = (doc.data()['role'] as String?) ?? 'viewer';
     return (companyId: companyId, role: role);
   }
+
+  /// companies/{companyId} dökümanından email alanını okur.
+  Future<String?> getCompanyEmail(String companyId) async {
+    final doc = await _db.collection('companies').doc(companyId).get();
+    return doc.data()?['email'] as String?;
+  }
 }

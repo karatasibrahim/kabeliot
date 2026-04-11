@@ -22,12 +22,16 @@ class DeviceRepository {
     String deviceId,
     String deviceName, {
     String? tbDeviceId,
+    String? tbAccessToken,
+    String? tbCustomerToken,
   }) async {
     await _devicesCol(companyId).doc(deviceId).set({
       'device_name': deviceName,
       'device_status': false,
       'last_seen': FieldValue.serverTimestamp(),
       if (tbDeviceId != null) 'tb_device_id': tbDeviceId,
+      if (tbAccessToken != null) 'tb_access_token': tbAccessToken,
+      if (tbCustomerToken != null) 'tb_customer_token': tbCustomerToken,
     }, SetOptions(merge: true));
   }
 

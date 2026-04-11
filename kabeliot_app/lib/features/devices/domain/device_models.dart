@@ -198,6 +198,8 @@ class FirestoreDevice {
     this.deviceName,
     this.lastSeen,
     this.tbDeviceId,
+    this.tbAccessToken,
+    this.tbCustomerToken,
   });
 
   final String id;
@@ -206,6 +208,10 @@ class FirestoreDevice {
   final DateTime? lastSeen;
   /// ThingsBoard device UUID — set during provisioning
   final String? tbDeviceId;
+  /// ThingsBoard MQTT access token — Node-RED reads this to serve ESP32
+  final String? tbAccessToken;
+  /// ThingsBoard customer JWT token — customer-level API auth
+  final String? tbCustomerToken;
 
   bool get isOnline => deviceStatus;
 
@@ -217,6 +223,8 @@ class FirestoreDevice {
       deviceName: d['device_name'] as String?,
       lastSeen: (d['last_seen'] as Timestamp?)?.toDate(),
       tbDeviceId: d['tb_device_id'] as String?,
+      tbAccessToken: d['tb_access_token'] as String?,
+      tbCustomerToken: d['tb_customer_token'] as String?,
     );
   }
 }

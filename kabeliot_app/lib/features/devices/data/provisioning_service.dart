@@ -35,34 +35,19 @@ class Esp32DeviceInfo {
 }
 
 /// Provisioning isteği gövdesi — POST /provision
+/// ESP32 sadece WiFi bilgilerini alır; TB token'ını Node-RED'den çeker.
 class ProvisioningRequest {
   const ProvisioningRequest({
-    required this.deviceName,
     required this.wifiSsid,
     required this.wifiPassword,
-    required this.mqttHost,
-    required this.mqttPort,
-    required this.tbAccessToken,
   });
 
-  final String deviceName;
   final String wifiSsid;
   final String wifiPassword;
-  /// ThingsBoard MQTT broker host (e.g. smartio.kabelteknoloji.com)
-  final String mqttHost;
-  /// ThingsBoard MQTT port (1883)
-  final int mqttPort;
-  /// ThingsBoard device access token — used as MQTT username; password is empty.
-  final String tbAccessToken;
 
   Map<String, dynamic> toJson() => {
-        'deviceName': deviceName,
         'wifiSsid': wifiSsid,
         'wifiPassword': wifiPassword,
-        'mqttHost': mqttHost,
-        'mqttPort': mqttPort,
-        'mqttUser': tbAccessToken,
-        'mqttPassword': '',
       };
 }
 
@@ -123,7 +108,7 @@ class ProvisioningService {
     }
 
     try {
-      await _dio!.post('/provision', data: request.toJson());
+      await _dio!.post('/wifi-config', data: request.toJson());
     } on DioException catch (e) {
       // 200 dışı veya timeout → ESP32 STA moduna geçince AP kapanır
       // dolayısıyla bağlantı kesilmesi NORMAL bir durumdur

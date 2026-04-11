@@ -4,23 +4,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wifi_scan/wifi_scan.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import '../../../core/firebase/company_repository.dart';
 import '../../../core/firebase/device_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/thingsboard/tb_api_client.dart';
 import '../../../core/thingsboard/tb_auth_provider.dart';
-import '../../../core/thingsboard/tb_settings_provider.dart';
 import '../../../shared/providers/auth_state_provider.dart';
 import '../../../shared/widgets/gradient_scaffold.dart';
 import '../../../shared/widgets/kabel_button.dart';
 import '../../../shared/widgets/kabel_text_field.dart';
-import '../data/provisioning_service.dart';
 
-// KABEL ESP32 AP SSID prefix — firmware ile eşleşmeli
-const _kabelPrefix = 'KABEL-';
-// ESP32 AP modundaki fabrika WiFi şifresi
-const _esp32ApPassword = 'kabel2024!';
+// KABEL ESP32 AP SSID prefix — KABEL_ veya KABEL- ile başlayan ağlar listelenir
+const _kabelPrefix = 'KABEL';
 
-/// wifi_scan'dan bağımsız basit AP bilgisi — mock ve gerçek için ortak model
+/// wifi_scan'dan bağımsız basit AP bilgisi
 class _KabelApInfo {
   const _KabelApInfo({required this.ssid, required this.level});
   final String ssid;
@@ -35,55 +34,53 @@ class AddDeviceScreen extends ConsumerStatefulWidget {
 }
 
 class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
-  // Adım: 0=Tara, 1=Cihaz Seç, 2=Konfig Gir, 3=Provision Sonucu
+  // Adım: 0=Tara, 1=Cihaz Seç, 2=Kaydet
   int _step = 0;
+
+  bool get _isIos => defaultTargetPlatform == TargetPlatform.iOS;
 
   // Adım 0 — WiFi tarama
   bool _isScanning = false;
   String? _scanError;
   List<_KabelApInfo> _kabelNetworks = [];
 
+  // iOS manuel SSID girişi
+  final _manualSsidCtrl = TextEditingController(text: 'KABEL_');
+
   // Seçilen AP
   _KabelApInfo? _selectedAp;
 
-  // Adım 2 — ESP32'den çekilen cihaz bilgisi
-  Esp32DeviceInfo? _deviceInfo;
-  bool _fetchingInfo = false;
-  String? _infoError;
-
-  // Form
+  // Adım 2 — Cihaz adı + kaydetme
   final _formKey = GlobalKey<FormState>();
   final _deviceNameCtrl = TextEditingController();
-  final _factorySsidCtrl = TextEditingController();
-  final _factoryPassCtrl = TextEditingController();
-
-  // Adım 3 — Provision
-  bool _isProvisioning = false;
-  bool _provisionSuccess = false;
-  String? _provisionError;
-
-  // Adım 3 — TB cihaz ID (provision sonrası Firestore'a kaydedilecek)
-  String? _tbDeviceId;
-
-  // Adım 3 — Firestore kayıt (provision'dan bağımsız, internete geçince)
-  bool _isSavingToFirestore = false;
-  bool _firebaseSaved = false;
-  String? _firebaseSaveError;
-
-  // Demo/test modu — gerçek cihaz olmadan test
-  bool _mockMode = false;
+  bool _isSaving = false;
+  bool _saveSuccess = false;
+  String? _saveError;
 
   @override
   void dispose() {
+    _manualSsidCtrl.dispose();
     _deviceNameCtrl.dispose();
-    _factorySsidCtrl.dispose();
-    _factoryPassCtrl.dispose();
     super.dispose();
   }
 
+  /// SSID'den Firestore doc ID'si: tire → alt çizgi (KABEL-XX → KABEL_XX)
+  String _deviceIdFromSsid(String ssid) => ssid.replaceAll('-', '_');
+
   // ─── Adım 0: WiFi Tara ───────────────────────────────────────────────────
 
+  void _connectManualIos() {
+    final ssid = _manualSsidCtrl.text.trim();
+    if (ssid.isEmpty) return;
+    _selectDevice(_KabelApInfo(ssid: ssid, level: -60));
+  }
+
   Future<void> _startScan() async {
+    if (_isIos) {
+      _connectManualIos();
+      return;
+    }
+
     setState(() {
       _isScanning = true;
       _scanError = null;
@@ -95,7 +92,8 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
       if (!mounted) return;
       setState(() {
         _isScanning = false;
-        _scanError = 'Konum izni gerekli. WiFi taraması yapılamıyor.\nAyarlar → Uygulama → Konum → İzin Ver';
+        _scanError =
+            'Konum izni gerekli. WiFi taraması yapılamıyor.\nAyarlar → Uygulama → Konum → İzin Ver';
       });
       return;
     }
@@ -105,14 +103,16 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
       if (!mounted) return;
       setState(() {
         _isScanning = false;
-        _scanError = 'WiFi taraması başlatılamadı.\nKonum ve WiFi servislerinin açık olduğundan emin olun.';
+        _scanError =
+            'WiFi taraması başlatılamadı.\nKonum ve WiFi servislerinin açık olduğundan emin olun.';
       });
       return;
     }
 
     await WiFiScan.instance.startScan();
 
-    final canGet = await WiFiScan.instance.canGetScannedResults(askPermissions: true);
+    final canGet =
+        await WiFiScan.instance.canGetScannedResults(askPermissions: true);
     if (canGet != CanGetScannedResults.yes) {
       if (!mounted) return;
       setState(() {
@@ -124,7 +124,8 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
 
     final results = await WiFiScan.instance.getScannedResults();
     final kabelNets = results
-        .where((ap) => ap.ssid.toUpperCase().startsWith(_kabelPrefix.toUpperCase()))
+        .where((ap) =>
+            ap.ssid.toUpperCase().startsWith(_kabelPrefix.toUpperCase()))
         .map((ap) => _KabelApInfo(ssid: ap.ssid, level: ap.level))
         .toList()
       ..sort((a, b) => b.level.compareTo(a.level));
@@ -134,132 +135,132 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
       _isScanning = false;
       _kabelNetworks = kabelNets;
       if (kabelNets.isEmpty) {
-        _scanError = 'Yakında KABEL cihazı bulunamadı. Cihazın AP modunda olduğundan emin olun.';
+        _scanError =
+            'Yakında KABEL cihazı bulunamadı. Cihazın açık olduğundan emin olun.';
       } else {
-        _step = 1; // Sonuçlar varsa otomatik sonraki adıma geç
+        _step = 1;
       }
     });
   }
 
-  // ─── Adım 1 → 2: Seç + /info çek ────────────────────────────────────────
+  // ─── Adım 1 → 2: Cihaz seç ──────────────────────────────────────────────
 
-  Future<void> _selectAndConnect(_KabelApInfo ap) async {
+  void _selectDevice(_KabelApInfo ap) {
+    _deviceNameCtrl.text = _deviceIdFromSsid(ap.ssid);
     setState(() {
       _selectedAp = ap;
-      _fetchingInfo = true;
-      _infoError = null;
+      _saveSuccess = false;
+      _saveError = null;
       _step = 2;
     });
-
-    // Gerçek uygulamada kullanıcı Ayarlar→WiFi'den bağlanır
-    // veya WifiConfiguration API kullanılır (Android 10+ kısıtlı).
-    // 2 sn bekleme: kullanıcının bağlantı kurması için.
-    await Future.delayed(const Duration(seconds: 2));
-
-    try {
-      final service = _mockMode ? ProvisioningService.mock : ProvisioningService.real;
-      final info = await service.fetchDeviceInfo();
-      if (!mounted) return;
-
-      // Cihaz adı önerisi
-      final suffix = ap.ssid.length > _kabelPrefix.length
-          ? ap.ssid.substring(_kabelPrefix.length)
-          : ap.ssid;
-      _deviceNameCtrl.text = 'KABEL-$suffix';
-
-      setState(() {
-        _deviceInfo = info;
-        _fetchingInfo = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _fetchingInfo = false;
-        _infoError = e.toString();
-      });
-    }
   }
 
-  // ─── Adım 2 → 3: Provision ──────────────────────────────────────────────
+  // ─── Adım 2: Firestore'a kaydet ─────────────────────────────────────────
 
-  Future<void> _provision() async {
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _step = 3;
-      _isProvisioning = true;
-      _provisionError = null;
-      _provisionSuccess = false;
-    });
-
-    try {
-      final deviceName = _deviceNameCtrl.text.trim();
-      final tbSettings = ref.read(tbSettingsNotifierProvider).valueOrNull;
-      final tbClient   = ref.read(tbAuthProvider.notifier).apiClient();
-
-      String tbAccessToken = '';
-      String tbDevId = '';
-
-      if (!_mockMode && tbClient != null) {
-        final tbDevice = await tbClient.createDevice(deviceName);
-        tbDevId = tbDevice.id;
-        final creds = await tbClient.getDeviceCredentials(tbDevId);
-        tbAccessToken = creds.credentialsId;
-      }
-
-      _tbDeviceId = tbDevId.isNotEmpty ? tbDevId : null;
-
-      final service = _mockMode ? ProvisioningService.mock : ProvisioningService.real;
-      await service.provision(ProvisioningRequest(
-        deviceName: deviceName,
-        wifiSsid: _factorySsidCtrl.text.trim(),
-        wifiPassword: _factoryPassCtrl.text,
-        mqttHost: tbSettings?.host ?? tbDefaultHost,
-        mqttPort: 1883,
-        tbAccessToken: tbAccessToken,
-      ));
-
-      if (!mounted) return;
-      setState(() {
-        _isProvisioning = false;
-        _provisionSuccess = true;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isProvisioning = false;
-        _provisionError = e.toString();
-      });
-    }
-  }
-
-  // ─── Firestore kayıt — internete döndükten sonra çağrılır ────────────────
-  Future<void> _saveToFirestore() async {
     final session = ref.read(authStateProvider);
-    if (session == null || _deviceInfo == null) return;
+    if (session == null) {
+      setState(() => _saveError = 'Oturum bulunamadı. Lütfen tekrar giriş yapın.');
+      return;
+    }
 
     setState(() {
-      _isSavingToFirestore = true;
-      _firebaseSaveError = null;
+      _isSaving = true;
+      _saveError = null;
     });
 
     try {
+      final deviceId   = _deviceIdFromSsid(_selectedAp!.ssid);
+      final deviceName = _deviceNameCtrl.text.trim();
+
+      // ── 1. Firestore'a kaydet ──────────────────────────────────────────
       await DeviceRepository().addDevice(
         session.companyId,
-        _deviceInfo!.chipId,
-        _deviceNameCtrl.text.trim(),
-        tbDeviceId: _tbDeviceId,
+        deviceId,
+        deviceName,
       );
+
+      // ── 2. ThingsBoard — customer altına cihaz ekle ────────────────────
+      // Her kayıt işleminde taze JWT al (token expire olmuş olabilir)
+      await ref.read(tbAuthProvider.notifier).reconnect();
+      final tbToken = await ref.read(tbAuthProvider.future);
+      final tbClient = TbApiClient(baseUrl: tbBaseUrl, jwtToken: tbToken!);
+
+      final companyEmail = await CompanyRepository().getCompanyEmail(session.companyId);
+      if (companyEmail == null) {
+        throw Exception('Firestore\'da şirkete ait e-posta adresi bulunamadı.');
+      }
+
+      // Customer bul
+      final customerId = await tbClient.getCustomerIdByEmail(companyEmail);
+      if (customerId == null) {
+        throw Exception(
+          'ThingsBoard\'da "$companyEmail" e-postasına sahip customer bulunamadı.\n'
+          'ThingsBoard → Customers bölümünde e-posta adresini kontrol edin.',
+        );
+      }
+
+      // Cihaz oluştur → device ID
+      final tbDevice    = await tbClient.createDevice(deviceName, customerId: customerId);
+      final tbDeviceId  = tbDevice.id;
+
+      // Cihaz MQTT token
+      final creds          = await tbClient.getDeviceCredentials(tbDeviceId);
+      final tbAccessToken  = creds.credentialsId;
+
+      // Customer JWT token
+      String? tbCustomerToken;
+      final userId = await tbClient.getCustomerUserId(customerId);
+      if (userId != null) {
+        tbCustomerToken = await tbClient.getUserToken(userId);
+      }
+
+      // ── 3. Firestore'u TB bilgileriyle güncelle ─────────────────────────
+      await DeviceRepository().addDevice(
+        session.companyId,
+        deviceId,
+        deviceName,
+        tbDeviceId: tbDeviceId,
+        tbAccessToken: tbAccessToken,
+        tbCustomerToken: tbCustomerToken,
+      );
+
       if (!mounted) return;
       setState(() {
-        _isSavingToFirestore = false;
-        _firebaseSaved = true;
+        _isSaving = false;
+        _saveSuccess = true;
       });
+    } on DeviceAlreadyExistsException catch (e) {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surfaceElevated,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 24.r),
+              SizedBox(width: 10.w),
+              const Text('Cihaz Zaten Kayıtlı'),
+            ],
+          ),
+          content: Text(e.toString()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Tamam', style: TextStyle(color: AppColors.primary)),
+            ),
+          ],
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _isSavingToFirestore = false;
-        _firebaseSaveError = e.toString();
+        _isSaving = false;
+        _saveError = e.toString();
       });
     }
   }
@@ -275,27 +276,13 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios_rounded, size: 20.r),
           onPressed: () {
-            if (_step > 0 && !_isProvisioning && !_provisionSuccess) {
-              setState(() => _step = _step > 2 ? 2 : _step - 1);
+            if (_step > 0 && !_isSaving && !_saveSuccess) {
+              setState(() => _step -= 1);
             } else {
               Navigator.of(context).pop();
             }
           },
         ),
-        actions: [
-          Tooltip(
-            message: _mockMode ? 'Demo Mod (Aktif)' : 'Demo Mod',
-            child: IconButton(
-              icon: Icon(
-                Icons.science_rounded,
-                color: _mockMode ? AppColors.warning : AppColors.textDisabled,
-                size: 20.r,
-              ),
-              onPressed: () => setState(() => _mockMode = !_mockMode),
-            ),
-          ),
-          SizedBox(width: 8.w),
-        ],
       ),
       child: SafeArea(
         child: Padding(
@@ -323,46 +310,28 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
                         key: const ValueKey(0),
                         isScanning: _isScanning,
                         error: _scanError,
-                        mockMode: _mockMode,
+                        isIos: _isIos,
+                        manualSsidCtrl: _manualSsidCtrl,
                         onScan: _startScan,
-                        onMockSelect: () => _selectAndConnect(
-                          const _KabelApInfo(ssid: 'KABEL-DEMO-A2F3', level: -52),
-                        ),
                       ),
                     1 => _Step1Select(
                         key: const ValueKey(1),
                         networks: _kabelNetworks,
-                        onSelect: _selectAndConnect,
+                        onSelect: _selectDevice,
                       ),
-                    2 => _Step2Config(
+                    _ => _Step2Save(
                         key: const ValueKey(2),
                         formKey: _formKey,
                         selectedAp: _selectedAp,
-                        deviceInfo: _deviceInfo,
-                        fetchingInfo: _fetchingInfo,
-                        infoError: _infoError,
                         deviceNameCtrl: _deviceNameCtrl,
-                        factorySsidCtrl: _factorySsidCtrl,
-                        factoryPassCtrl: _factoryPassCtrl,
-                        onProvision: _provision,
-                        onRetry: _selectedAp != null
-                            ? () => _selectAndConnect(_selectedAp!)
-                            : null,
-                      ),
-                    _ => _Step3Result(
-                        key: const ValueKey(3),
-                        isProvisioning: _isProvisioning,
-                        success: _provisionSuccess,
-                        error: _provisionError,
-                        deviceName: _deviceNameCtrl.text,
-                        isSavingToFirestore: _isSavingToFirestore,
-                        firebaseSaved: _firebaseSaved,
-                        firebaseSaveError: _firebaseSaveError,
-                        onSaveToFirestore: _saveToFirestore,
+                        isSaving: _isSaving,
+                        saveSuccess: _saveSuccess,
+                        saveError: _saveError,
+                        onSave: _save,
                         onDone: () => Navigator.of(context).pop(),
                         onRetry: () => setState(() {
-                          _step = 2;
-                          _provisionError = null;
+                          _saveError = null;
+                          _saveSuccess = false;
                         }),
                       ),
                   },
@@ -382,13 +351,13 @@ class _StepIndicator extends StatelessWidget {
   const _StepIndicator({required this.currentStep});
   final int currentStep;
 
-  static const _labels = ['WiFi Tara', 'Cihaz Seç', 'Yapılandır', 'Tamamla'];
+  static const _labels = ['WiFi Tara', 'Cihaz Seç', 'Kaydet'];
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: List.generate(_labels.length, (i) {
-        final done = i < currentStep;
+        final done   = i < currentStep;
         final active = i == currentStep;
 
         return Expanded(
@@ -422,7 +391,8 @@ class _StepIndicator extends StatelessWidget {
                     ),
                     child: Center(
                       child: done
-                          ? Icon(Icons.check_rounded, color: Colors.white, size: 13.r)
+                          ? Icon(Icons.check_rounded,
+                              color: Colors.white, size: 13.r)
                           : Text(
                               '${i + 1}',
                               style: AppTextStyles.labelSmall.copyWith(
@@ -468,16 +438,16 @@ class _Step0Scan extends StatelessWidget {
     super.key,
     required this.isScanning,
     required this.error,
-    required this.mockMode,
+    required this.isIos,
+    required this.manualSsidCtrl,
     required this.onScan,
-    required this.onMockSelect,
   });
 
   final bool isScanning;
   final String? error;
-  final bool mockMode;
+  final bool isIos;
+  final TextEditingController manualSsidCtrl;
   final VoidCallback onScan;
-  final VoidCallback onMockSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -486,34 +456,58 @@ class _Step0Scan extends StatelessWidget {
         _InfoCard(
           icon: Icons.wifi_find_rounded,
           iconColor: AppColors.primary,
-          title: 'KABEL Cihazı Ara',
-          body: mockMode
-              ? 'Demo mod aktif.\nGerçek WiFi taraması yapılmaz — simüle edilmiş cihazla test edebilirsiniz.'
-              : 'ESP32 kartı AP modunda "KABEL-XXXX" adında WiFi yayınlar.\n\n'
-                  '• Kartı güce takın\n'
-                  '• BOOT + EN tuşlarına aynı anda 3 sn basın\n'
-                  '• LED hızlı yanıp sönünce hazır',
+          title: 'KABEL Cihazı Bul',
+          body: isIos
+              ? 'iOS\'ta otomatik tarama desteklenmez.\n\n'
+                'Cihazın SSID\'sini aşağıya girin\n'
+                '(örn: KABEL_A846749FFC68)'
+              : 'Yakındaki KABEL cihazlarını taramak için butona basın.\n\n'
+                '• Cihazın güce takılı olduğundan emin olun\n'
+                '• Konum servisi açık olmalı',
         ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.08, end: 0),
 
         SizedBox(height: 16.h),
+
+        if (isIos) ...[
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12.r),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: TextField(
+              controller: manualSsidCtrl,
+              style: AppTextStyles.mono.copyWith(fontSize: 14.sp),
+              decoration: InputDecoration(
+                labelText: 'KABEL Cihaz SSID',
+                labelStyle: AppTextStyles.labelSmall,
+                hintText: 'KABEL_XXXX',
+                hintStyle: AppTextStyles.labelSmall
+                    .copyWith(color: AppColors.textDisabled),
+                prefixIcon:
+                    Icon(Icons.wifi_rounded, color: AppColors.primary, size: 18.r),
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+          SizedBox(height: 12.h),
+        ],
 
         if (error != null) _ErrorBanner(message: error!),
 
         const Spacer(),
 
-        if (mockMode)
-          KabelButton(
-            label: 'Demo Cihazla Test Et',
-            onPressed: onMockSelect,
-            icon: Icons.science_rounded,
-          )
-        else
-          KabelButton(
-            label: isScanning ? 'Taranıyor...' : 'WiFi Ağlarını Tara',
-            onPressed: isScanning ? null : onScan,
-            icon: isScanning ? null : Icons.radar_rounded,
-            isLoading: isScanning,
-          ),
+        KabelButton(
+          label: isIos
+              ? 'Ekle'
+              : isScanning
+                  ? 'Taranıyor...'
+                  : 'WiFi Ağlarını Tara',
+          onPressed: isScanning ? null : onScan,
+          icon: isIos ? Icons.add_rounded : (isScanning ? null : Icons.radar_rounded),
+          isLoading: isScanning,
+        ),
         SizedBox(height: 8.h),
       ],
     );
@@ -530,7 +524,7 @@ class _Step1Select extends StatelessWidget {
   });
 
   final List<_KabelApInfo> networks;
-  final Future<void> Function(_KabelApInfo) onSelect;
+  final void Function(_KabelApInfo) onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -541,9 +535,7 @@ class _Step1Select extends StatelessWidget {
           icon: Icons.developer_board_rounded,
           iconColor: AppColors.accent,
           title: 'Cihaz Seçin',
-          body: 'Listeden eklemek istediğiniz KABEL cihazını seçin.\n'
-              'Telefon otomatik olarak o cihaza bağlanacak.\n'
-              'AP şifresi: $_esp32ApPassword',
+          body: 'Eklemek istediğiniz KABEL cihazına dokunun.\nCihaz anında sisteme kaydedilecektir.',
         ).animate().fadeIn(duration: 300.ms),
         SizedBox(height: 16.h),
         Padding(
@@ -564,281 +556,176 @@ class _Step1Select extends StatelessWidget {
   }
 }
 
-// ─── Adım 2: Yapılandırma ────────────────────────────────────────────────────
+// ─── Adım 2: Ad Gir + Kaydet ─────────────────────────────────────────────────
 
-class _Step2Config extends StatelessWidget {
-  const _Step2Config({
+class _Step2Save extends StatelessWidget {
+  const _Step2Save({
     super.key,
     required this.formKey,
     required this.selectedAp,
-    required this.deviceInfo,
-    required this.fetchingInfo,
-    required this.infoError,
     required this.deviceNameCtrl,
-    required this.factorySsidCtrl,
-    required this.factoryPassCtrl,
-    required this.onProvision,
+    required this.isSaving,
+    required this.saveSuccess,
+    required this.saveError,
+    required this.onSave,
+    required this.onDone,
     required this.onRetry,
   });
 
   final GlobalKey<FormState> formKey;
   final _KabelApInfo? selectedAp;
-  final Esp32DeviceInfo? deviceInfo;
-  final bool fetchingInfo;
-  final String? infoError;
   final TextEditingController deviceNameCtrl;
-  final TextEditingController factorySsidCtrl;
-  final TextEditingController factoryPassCtrl;
-  final VoidCallback onProvision;
-  final VoidCallback? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    if (fetchingInfo) {
-      return _LoadingView(
-        message: 'ESP32\'ye Bağlanılıyor...',
-        subtitle: 'Cihaz bilgileri alınıyor\n(${selectedAp?.ssid ?? ''})',
-      );
-    }
-
-    if (infoError != null) {
-      return _ErrorView(
-        message: infoError!,
-        hint: 'Telefonun "${selectedAp?.ssid ?? 'KABEL'}" WiFi\'ne bağlı olduğundan emin olun.\n'
-            'Ayarlar → WiFi → ${selectedAp?.ssid ?? 'KABEL-XXXX'} → Bağlan',
-        onRetry: onRetry,
-      );
-    }
-
-    return Form(
-      key: formKey,
-      child: ListView(
-        children: [
-          if (deviceInfo != null) ...[
-            _DeviceInfoSummary(info: deviceInfo!),
-            SizedBox(height: 16.h),
-          ],
-
-          _SectionLabel('Cihaz Adı'),
-          SizedBox(height: 8.h),
-          KabelTextField(
-            label: 'Cihaz Adı',
-            hint: 'örn: PCB-Kontrol-01',
-            controller: deviceNameCtrl,
-            prefixIcon: Icons.label_outline,
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'Cihaz adı gerekli' : null,
-          ),
-          SizedBox(height: 20.h),
-
-          _SectionLabel('Fabrika / İşletme WiFi Ağı'),
-          SizedBox(height: 4.h),
-          Text(
-            'ESP32\'nin bağlanacağı asıl ağın bilgileri',
-            style: AppTextStyles.labelSmall,
-          ),
-          SizedBox(height: 10.h),
-          KabelTextField(
-            label: 'WiFi Ağ Adı (SSID)',
-            hint: 'Fabrika WiFi ağı',
-            controller: factorySsidCtrl,
-            prefixIcon: Icons.wifi_rounded,
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'SSID gerekli' : null,
-          ),
-          SizedBox(height: 12.h),
-          KabelTextField(
-            label: 'WiFi Şifresi',
-            controller: factoryPassCtrl,
-            prefixIcon: Icons.lock_outline,
-            isObscure: true,
-            validator: (v) =>
-                (v == null || v.isEmpty) ? 'Şifre gerekli' : null,
-          ),
-          SizedBox(height: 28.h),
-          KabelButton(
-            label: 'Cihazı Yapılandır ve Bağla',
-            onPressed: onProvision,
-            icon: Icons.send_rounded,
-          ),
-          SizedBox(height: 20.h),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Adım 3: Sonuç ───────────────────────────────────────────────────────────
-
-class _Step3Result extends StatelessWidget {
-  const _Step3Result({
-    super.key,
-    required this.isProvisioning,
-    required this.success,
-    required this.error,
-    required this.deviceName,
-    required this.isSavingToFirestore,
-    required this.firebaseSaved,
-    required this.firebaseSaveError,
-    required this.onSaveToFirestore,
-    required this.onDone,
-    required this.onRetry,
-  });
-
-  final bool isProvisioning;
-  final bool success;
-  final String? error;
-  final String deviceName;
-  final bool isSavingToFirestore;
-  final bool firebaseSaved;
-  final String? firebaseSaveError;
-  final VoidCallback onSaveToFirestore;
+  final bool isSaving;
+  final bool saveSuccess;
+  final String? saveError;
+  final VoidCallback onSave;
   final VoidCallback onDone;
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    if (isProvisioning) {
+    if (isSaving) {
       return const _LoadingView(
-        message: 'Yapılandırma Gönderiliyor...',
-        subtitle: 'ESP32 ağ bilgilerini alıyor ve yeniden başlatılıyor.\nBağlantı kesilirse bu normaldir.',
+        message: 'Kaydediliyor...',
+        subtitle: 'Cihaz sisteme ekleniyor.',
       );
     }
 
-    if (error != null) {
-      return _ErrorView(
-        message: error!,
-        hint: 'Provision sırasında bağlantı kesilmesi normaldir — '
-            'ESP32 fabrika ağına geçiyor olabilir.\n'
-            'Cihaz listesini 1-2 dakika sonra yenileyin.',
-        onRetry: onRetry,
-        retryLabel: 'Tekrar Dene',
-        extraAction: TextButton(
-          onPressed: onDone,
-          child: const Text('Cihazlara Dön'),
-        ),
-      );
-    }
-
-    // Başarı
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 88.r,
-          height: 88.r,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.success.withValues(alpha: 0.12),
-            border: Border.all(color: AppColors.success, width: 2),
-          ),
-          child: Icon(Icons.check_rounded, color: AppColors.success, size: 48.r),
-        )
-            .animate()
-            .scale(
-              begin: const Offset(0, 0),
-              end: const Offset(1, 1),
-              duration: 400.ms,
-              curve: Curves.elasticOut,
-            ),
-        SizedBox(height: 28.h),
-        Text(
-          'Cihaz Başarıyla Eklendi!',
-          style: AppTextStyles.headingMedium.copyWith(color: AppColors.success),
-        ).animate().fadeIn(delay: 200.ms),
-        SizedBox(height: 8.h),
-        Text(
-          '"$deviceName" yapılandırıldı.\nFabrika WiFi\'ne bağlanıyor, MQTT\'ye kaydolacak.',
-          style: AppTextStyles.bodyMedium,
-          textAlign: TextAlign.center,
-        ).animate().fadeIn(delay: 300.ms),
-        SizedBox(height: 24.h),
-        Container(
-          padding: EdgeInsets.all(14.r),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(12.r),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            children: [
-              _MqttInfoRow(label: 'Sunucu', value: 'smartio.kabelteknoloji.com:1883'),
-              SizedBox(height: 6.h),
-              _MqttInfoRow(label: 'Protokol', value: 'ThingsBoard MQTT'),
-            ],
-          ),
-        ).animate().fadeIn(delay: 400.ms),
-        SizedBox(height: 20.h),
-
-        // Firestore kayıt bölümü
-        if (!firebaseSaved) ...[
+    if (saveSuccess) {
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
           Container(
-            padding: EdgeInsets.all(16.r),
+            width: 88.r,
+            height: 88.r,
             decoration: BoxDecoration(
-              color: AppColors.warning.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12.r),
-              border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+              shape: BoxShape.circle,
+              color: AppColors.success.withValues(alpha: 0.12),
+              border: Border.all(color: AppColors.success, width: 2),
             ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.wifi_off_rounded, color: AppColors.warning, size: 18.r),
-                    SizedBox(width: 8.w),
-                    Expanded(
-                      child: Text(
-                        'Cihazı sisteme kaydetmek için telefon internetine bağlanın.',
-                        style: AppTextStyles.labelSmall.copyWith(color: AppColors.warning),
-                      ),
-                    ),
-                  ],
-                ),
-                if (firebaseSaveError != null) ...[
-                  SizedBox(height: 8.h),
-                  Text(
-                    'Hata: $firebaseSaveError',
-                    style: AppTextStyles.labelSmall.copyWith(color: AppColors.error),
-                  ),
-                ],
-                SizedBox(height: 12.h),
-                KabelButton(
-                  label: isSavingToFirestore ? 'Kaydediliyor...' : 'Sisteme Kaydet',
-                  onPressed: isSavingToFirestore ? null : onSaveToFirestore,
-                  isLoading: isSavingToFirestore,
-                  icon: Icons.cloud_upload_rounded,
-                ),
-              ],
-            ),
-          ).animate().fadeIn(delay: 500.ms),
-        ] else ...[
+            child:
+                Icon(Icons.check_rounded, color: AppColors.success, size: 48.r),
+          )
+              .animate()
+              .scale(
+                begin: const Offset(0, 0),
+                end: const Offset(1, 1),
+                duration: 400.ms,
+                curve: Curves.elasticOut,
+              ),
+          SizedBox(height: 28.h),
+          Text(
+            'Cihaz Eklendi!',
+            style:
+                AppTextStyles.headingMedium.copyWith(color: AppColors.success),
+          ).animate().fadeIn(delay: 200.ms),
+          SizedBox(height: 8.h),
+          Text(
+            '"${deviceNameCtrl.text}" sisteme kaydedildi.',
+            style: AppTextStyles.bodyMedium,
+            textAlign: TextAlign.center,
+          ).animate().fadeIn(delay: 300.ms),
+          SizedBox(height: 12.h),
           Container(
             padding: EdgeInsets.all(12.r),
             decoration: BoxDecoration(
-              color: AppColors.success.withValues(alpha: 0.1),
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(10.r),
-              border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.cloud_done_rounded, color: AppColors.success, size: 16.r),
+                Icon(Icons.wifi_rounded, color: AppColors.primary, size: 16.r),
                 SizedBox(width: 8.w),
                 Text(
-                  'Cihaz sisteme kaydedildi.',
-                  style: AppTextStyles.labelSmall.copyWith(color: AppColors.success),
+                  selectedAp?.ssid ?? '',
+                  style: AppTextStyles.mono.copyWith(fontSize: 12.sp),
                 ),
               ],
             ),
-          ).animate().fadeIn(),
+          ).animate().fadeIn(delay: 350.ms),
+          const Spacer(),
+          KabelButton(
+            label: 'Cihazlara Dön',
+            onPressed: onDone,
+            icon: Icons.arrow_back_rounded,
+          ).animate().fadeIn(delay: 500.ms),
+          SizedBox(height: 8.h),
         ],
+      );
+    }
 
-        const Spacer(),
-        KabelButton(
-          label: 'Cihazlara Dön',
-          onPressed: onDone,
-          icon: Icons.arrow_back_rounded,
-        ).animate().fadeIn(delay: 600.ms),
-        SizedBox(height: 8.h),
-      ],
+    // Form
+    return Form(
+      key: formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Seçilen cihaz bilgisi
+          Container(
+            padding: EdgeInsets.all(14.r),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12.r),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.developer_board_rounded,
+                    color: AppColors.primary, size: 22.r),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selectedAp?.ssid ?? '',
+                        style: AppTextStyles.mono.copyWith(fontSize: 13.sp),
+                      ),
+                      Text(
+                        'Sinyal: ${selectedAp?.level ?? 0} dBm',
+                        style: AppTextStyles.labelSmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ).animate().fadeIn(duration: 300.ms),
+
+          SizedBox(height: 20.h),
+
+          Text(
+            'CİHAZ ADI',
+            style: AppTextStyles.labelSmall
+                .copyWith(color: AppColors.textDisabled, letterSpacing: 1.1),
+          ),
+          SizedBox(height: 8.h),
+          KabelTextField(
+            label: 'Cihaz Adı',
+            hint: 'örn: Üretim Hattı PCB-1',
+            controller: deviceNameCtrl,
+            prefixIcon: Icons.label_outline,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Cihaz adı gerekli' : null,
+          ),
+
+          if (saveError != null) ...[
+            SizedBox(height: 12.h),
+            _ErrorBanner(message: saveError!),
+          ],
+
+          const Spacer(),
+
+          KabelButton(
+            label: 'Sisteme Kaydet',
+            onPressed: onSave,
+            icon: Icons.cloud_upload_rounded,
+          ),
+          SizedBox(height: 8.h),
+        ],
+      ),
     );
   }
 }
@@ -875,8 +762,8 @@ class _InfoCard extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: iconColor.withValues(alpha: 0.12),
-              border: Border.all(
-                  color: iconColor.withValues(alpha: 0.4), width: 1.5),
+              border:
+                  Border.all(color: iconColor.withValues(alpha: 0.4), width: 1.5),
             ),
             child: Icon(icon, color: iconColor, size: 30.r),
           ),
@@ -894,7 +781,7 @@ class _InfoCard extends StatelessWidget {
 class _NetworkList extends StatelessWidget {
   const _NetworkList({required this.networks, required this.onSelect});
   final List<_KabelApInfo> networks;
-  final Future<void> Function(_KabelApInfo) onSelect;
+  final void Function(_KabelApInfo) onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -902,7 +789,7 @@ class _NetworkList extends StatelessWidget {
       itemCount: networks.length,
       separatorBuilder: (_, __) => SizedBox(height: 8.h),
       itemBuilder: (context, i) {
-        final ap = networks[i];
+        final ap  = networks[i];
         final sig = _signalQuality(ap.level);
         return GestureDetector(
           onTap: () => onSelect(ap),
@@ -956,103 +843,6 @@ class _NetworkList extends StatelessWidget {
   }
 }
 
-class _DeviceInfoSummary extends StatelessWidget {
-  const _DeviceInfoSummary({required this.info});
-  final Esp32DeviceInfo info;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(14.r),
-      decoration: BoxDecoration(
-        color: AppColors.success.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.check_circle_rounded,
-                  color: AppColors.success, size: 16.r),
-              SizedBox(width: 6.w),
-              Text(
-                'Cihaz Bağlantısı Başarılı',
-                style: AppTextStyles.labelSmall
-                    .copyWith(color: AppColors.success),
-              ),
-            ],
-          ),
-          SizedBox(height: 10.h),
-          Row(
-            children: [
-              _InfoChip(label: 'Model', value: info.model),
-              SizedBox(width: 8.w),
-              _InfoChip(label: 'FW', value: info.firmware),
-              SizedBox(width: 8.w),
-              _InfoChip(label: 'Sensör', value: '${info.sensorCount}'),
-              SizedBox(width: 8.w),
-              _InfoChip(label: 'Röle', value: '${info.relayCount}'),
-            ],
-          ),
-          SizedBox(height: 8.h),
-          Row(
-            children: [
-              Text('MAC: ', style: AppTextStyles.labelSmall),
-              Text(info.mac,
-                  style: AppTextStyles.mono.copyWith(fontSize: 11.sp)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.label, required this.value});
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: EdgeInsets.symmetric(vertical: 6.h),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(8.r),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          children: [
-            Text(label,
-                style: AppTextStyles.labelSmall.copyWith(fontSize: 9.sp)),
-            Text(
-              value,
-              style: AppTextStyles.mono
-                  .copyWith(fontSize: 11.sp, color: AppColors.accent),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Text(
-        text.toUpperCase(),
-        style: AppTextStyles.labelSmall
-            .copyWith(color: AppColors.textDisabled, letterSpacing: 1.1),
-      );
-}
-
 class _LoadingView extends StatelessWidget {
   const _LoadingView({required this.message, required this.subtitle});
   final String message;
@@ -1083,78 +873,6 @@ class _LoadingView extends StatelessWidget {
   }
 }
 
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({
-    required this.message,
-    required this.hint,
-    this.onRetry,
-    this.retryLabel = 'Tekrar Dene',
-    this.extraAction,
-  });
-  final String message;
-  final String hint;
-  final VoidCallback? onRetry;
-  final String retryLabel;
-  final Widget? extraAction;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 72.r,
-            height: 72.r,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.error.withValues(alpha: 0.12),
-              border: Border.all(color: AppColors.error, width: 1.5),
-            ),
-            child: Icon(Icons.wifi_off_rounded,
-                color: AppColors.error, size: 36.r),
-          ),
-          SizedBox(height: 20.h),
-          Text(
-            'Bağlantı Hatası',
-            style:
-                AppTextStyles.headingSmall.copyWith(color: AppColors.error),
-          ),
-          SizedBox(height: 10.h),
-          Text(message,
-              style: AppTextStyles.bodySmall, textAlign: TextAlign.center),
-          SizedBox(height: 12.h),
-          Container(
-            padding: EdgeInsets.all(12.r),
-            decoration: BoxDecoration(
-              color: AppColors.warning.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10.r),
-              border:
-                  Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-            ),
-            child: Text(
-              hint,
-              style:
-                  AppTextStyles.labelSmall.copyWith(color: AppColors.warning),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          SizedBox(height: 24.h),
-          if (onRetry != null)
-            KabelButton(
-                label: retryLabel,
-                onPressed: onRetry!,
-                icon: Icons.refresh_rounded),
-          if (extraAction != null) ...[
-            SizedBox(height: 8.h),
-            extraAction!,
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({required this.message});
   final String message;
@@ -1176,37 +894,11 @@ class _ErrorBanner extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style:
-                  AppTextStyles.labelSmall.copyWith(color: AppColors.error),
+              style: AppTextStyles.labelSmall.copyWith(color: AppColors.error),
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _MqttInfoRow extends StatelessWidget {
-  const _MqttInfoRow({required this.label, required this.value});
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 60.w,
-          child: Text(label, style: AppTextStyles.bodySmall),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: AppTextStyles.mono.copyWith(fontSize: 11.sp),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
     );
   }
 }

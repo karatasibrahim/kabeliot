@@ -4,7 +4,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/mqtt/mqtt_settings_provider.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -32,13 +31,11 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(authStateProvider);
-    final mqttAsync = ref.watch(mqttSettingsProvider);
     final devicesAsync = ref.watch(deviceListProvider);
 
     final email = session?.email ?? '';
     final role = session?.role ?? 'viewer';
     final deviceCount = devicesAsync.valueOrNull?.length ?? 0;
-    final mqttHost = mqttAsync.valueOrNull?.host ?? '...';
 
     return GradientScaffold(
       appBar: AppBar(
@@ -72,17 +69,10 @@ class ProfileScreen extends ConsumerWidget {
             SizedBox(height: 16.h),
             _buildSection('Cihaz Yönetimi', [
               _MenuItem(
-                icon: Icons.cloud_outlined,
-                color: AppColors.success,
-                label: 'MQTT Sunucu Ayarları',
-                trailing: Text(mqttHost, style: AppTextStyles.monoSmall),
-                onTap: () => context.push(AppRoutes.settings),
-              ),
-              _MenuItem(
                 icon: Icons.wifi_rounded,
                 color: AppColors.accent,
                 label: 'WiFi Provisioning',
-                onTap: () => context.push(AppRoutes.addDevice),
+                onTap: () => context.push(AppRoutes.provisioning),
               ),
               _MenuItem(
                 icon: Icons.developer_board_outlined,

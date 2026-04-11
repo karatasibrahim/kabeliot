@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'tb_auth_provider.dart';
-import 'tb_settings_provider.dart';
 
 part 'tb_websocket_service.g.dart';
 
@@ -44,10 +43,9 @@ class TbWebSocketService {
     _channel?.sink.close();
     _controllers.clear();
 
-    final settings = _ref.read(tbSettingsNotifierProvider).valueOrNull;
-    if (settings == null || _currentToken == null) return;
+    if (_currentToken == null) return;
 
-    final wsUrl = 'ws://${settings.host}:${settings.port}/api/ws/plugins/telemetry?token=$_currentToken';
+    final wsUrl = 'ws://smartio.kabelteknoloji.com:8080/api/ws/plugins/telemetry?token=$_currentToken';
     try {
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
       _socketSub = _channel!.stream.listen(
