@@ -3,9 +3,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/mqtt/mqtt_providers.dart';
-import '../../../core/mqtt/mqtt_service.dart';
 import '../../../core/mqtt/notification_provider.dart';
+import '../../../core/thingsboard/tb_auth_provider.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_decorations.dart';
@@ -20,7 +19,7 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mqttStatus = ref.watch(mqttConnectionProvider);
+    final tbAuth = ref.watch(tbAuthProvider);
     final notifications = ref.watch(mqttNotificationsProvider);
     final unreadCount = ref.read(mqttNotificationsProvider.notifier).unreadCount;
     final devicesAsync = ref.watch(deviceListProvider);

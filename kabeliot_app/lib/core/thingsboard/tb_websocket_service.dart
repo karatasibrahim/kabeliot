@@ -37,11 +37,14 @@ class TbWebSocketService {
 
   // cmdId → StreamController for that subscription
   final Map<int, StreamController<Map<String, dynamic>>> _controllers = {};
+  // cmdId → subscription command JSON (reconnect'te tekrar gönderilir)
+  final Map<int, String> _pendingCmds = {};
 
   void _reconnect() {
     _socketSub?.cancel();
     _channel?.sink.close();
-    _controllers.clear();
+    // Controller'ları KAPATMA — mevcut stream listener'lar yaşamaya devam etmeli
+    // Pending commands reconnect sonrası yeniden gönderilecek
 
     if (_currentToken == null) return;
 
@@ -64,6 +67,11 @@ class TbWebSocketService {
         },
       );
       debugPrint('[TbWS] connected to $wsUrl');
+      // Reconnect sonrası tüm aktif subscription'ları yeniden gönder
+      for (final cmd in _pendingCmds.values) {
+        _channel!.sink.add(cmd);
+        debugPrint('[TbWS] resent pending cmd after reconnect');
+      }
     } catch (e) {
       debugPrint('[TbWS] connect failed: $e');
     }
@@ -71,6 +79,7 @@ class TbWebSocketService {
 
   void _onMessage(dynamic raw) {
     try {
+      debugPrint('[TbWS] raw message: $raw');
       final data = jsonDecode(raw as String) as Map<String, dynamic>;
       final cmdId = data['subscriptionId'] as int?;
       if (cmdId == null) return;
@@ -88,6 +97,7 @@ class TbWebSocketService {
           flat[entry.key] = (list.first as List<dynamic>)[1];
         }
       }
+      debugPrint('[TbWS] parsed data cmdId=$cmdId flat=$flat');
       if (flat.isNotEmpty) controller.add(flat);
     } catch (e) {
       debugPrint('[TbWS] parse error: $e');
@@ -118,12 +128,19 @@ class TbWebSocketService {
       'historyCmds': [],
       'attrSubCmds': [],
     });
-    _channel?.sink.add(cmd);
+    _pendingCmds[id] = cmd; // reconnect'te yeniden gönderilmek üzere sakla
+    debugPrint('[TbWS] subscribe cmdId=$id deviceId=$deviceId keys=${keys.join(",")}');
+    if (_channel == null) {
+      debugPrint('[TbWS] WARNING: channel null, cmd queued for next reconnect');
+    } else {
+      _channel!.sink.add(cmd);
+    }
     return controller.stream;
   }
 
   void _unsubscribe(int cmdId) {
     _controllers.remove(cmdId);
+    _pendingCmds.remove(cmdId); // artık yeniden gönderilmemeli
     final cmd = jsonEncode({
       'tsSubCmds': [
         {'cmdId': cmdId, 'unsubscribe': true}
@@ -142,5 +159,6 @@ class TbWebSocketService {
       c.close();
     }
     _controllers.clear();
+    _pendingCmds.clear();
   }
 }

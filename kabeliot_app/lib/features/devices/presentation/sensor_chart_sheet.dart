@@ -29,7 +29,8 @@ class _SensorChartSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(liveSensorDataProvider(device.id, index));
+    final deviceId = device.tbDeviceId ?? device.id;
+    final data = ref.watch(liveSensorDataProvider(deviceId, index));
     final cs = Theme.of(context).colorScheme;
     final color = config.type.color;
     final currentVal = data.isEmpty ? 0.0 : data.last;
@@ -196,7 +197,19 @@ class _LiveChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (data.length < 2) return const Center(child: CircularProgressIndicator());
+    if (data.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: color),
+            SizedBox(height: 12.h),
+            Text('Veri bekleniyor...', style: AppTextStyles.bodySmall),
+          ],
+        ),
+      );
+    }
+    if (data.length < 2) return Center(child: CircularProgressIndicator(color: color));
 
     final minY = data.reduce((a, b) => a < b ? a : b);
     final maxY = data.reduce((a, b) => a > b ? a : b);

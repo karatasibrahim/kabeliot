@@ -266,9 +266,9 @@ class _DeviceCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name, style: AppTextStyles.headingSmall),
+                  Text(name, style: AppTextStyles.headingSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text('Kabel Core', style: AppTextStyles.bodySmall),
-                  Text(device.id, style: AppTextStyles.mono),
+                  Text(device.id, style: AppTextStyles.mono, maxLines: 1, overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),

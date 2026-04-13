@@ -6,10 +6,12 @@ part 'live_data_provider.g.dart';
 
 const _historyLength = 60;
 
-String _tbSensorKey(int index) => 'sensor_$index';
+String _tbSensorKey(int index) => 'sensor_${index}_value';
 
-/// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+/// Belirli bir sensörün son [_historyLength] değeri — ThingsBoard WebSocket'ten beslenir.
 /// [deviceId] ThingsBoard device UUID'si.
+/// Başlangıçta boş liste döner; ilk veri geldiğinde dolmaya başlar.
+/// `state.isEmpty` → henüz veri yok; `state.isNotEmpty` → veri akıyor.
 @riverpod
 class LiveSensorData extends _$LiveSensorData {
   StreamSubscription<Map<String, dynamic>>? _sub;
@@ -24,12 +26,15 @@ class LiveSensorData extends _$LiveSensorData {
       if (data.containsKey(key)) {
         final raw = data[key];
         final value = (raw is num) ? raw.toDouble() : double.tryParse('$raw') ?? 0.0;
-        state = [...state.skip(1), value];
+        final current = state.isEmpty
+            ? List<double>.filled(_historyLength, value)
+            : [...state.skip(1), value];
+        state = current;
       }
     });
 
     ref.onDispose(() => _sub?.cancel());
-    return List<double>.filled(_historyLength, 0.0);
+    return const []; // boş → henüz veri yok
   }
 
   double get currentValue => state.isEmpty ? 0 : state.last;

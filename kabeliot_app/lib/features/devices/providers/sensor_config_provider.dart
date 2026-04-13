@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/thingsboard/tb_api_client.dart';
 import '../../../core/thingsboard/tb_auth_provider.dart';
 import '../../../core/thingsboard/tb_websocket_service.dart';
 import '../domain/device_models.dart';
@@ -45,6 +47,9 @@ class SensorConfigs extends _$SensorConfigs {
 @riverpod
 class RelayStates extends _$RelayStates {
   StreamSubscription<Map<String, dynamic>>? _wsSub;
+  // RPC gönderilen rölelerin timestamp'i — bu süre içinde WS güncellemesi yok sayılır
+  final Map<int, DateTime> _rpcSentAt = {};
+  static const _rpcDebounce = Duration(seconds: 4);
 
   @override
   List<RelayConfig> build(String deviceId, int relayCount) {
@@ -74,20 +79,24 @@ class RelayStates extends _$RelayStates {
 
   void _subscribeTb() {
     final tbWs = ref.read(tbWebSocketServiceProvider);
-    final keys = List.generate(state.length, (i) => 'relay_$i');
+    final keys = List.generate(relayCount, (i) => 'relay_${i}_status');
 
     _wsSub?.cancel();
     _wsSub = tbWs.subscribeToTelemetry(deviceId, keys).listen((data) {
       final updated = List<RelayConfig>.from(state);
+      bool changed = false;
       for (int i = 0; i < updated.length; i++) {
-        final key = 'relay_$i';
-        if (data.containsKey(key)) {
-          final raw = data[key];
-          final isOn = raw is bool ? raw : (raw == 1 || raw == true);
-          updated[i] = updated[i].copyWith(isOn: isOn);
-        }
+        final key = 'relay_${i}_status';
+        if (!data.containsKey(key)) continue;
+        // RPC gönderildikten sonra debounce süresi içindeyse bu röleyi yoksay
+        final sentAt = _rpcSentAt[i];
+        if (sentAt != null && DateTime.now().difference(sentAt) < _rpcDebounce) continue;
+        final raw = data[key];
+        final isOn = raw is bool ? raw : (raw == 1 || raw == true || raw == 'true');
+        updated[i] = updated[i].copyWith(isOn: isOn);
+        changed = true;
       }
-      state = updated;
+      if (changed) state = updated;
     });
   }
 
@@ -99,17 +108,39 @@ class RelayStates extends _$RelayStates {
     );
   }
 
-  void toggle(int index) {
+  Future<void> toggle(int index) async {
     if (!state[index].isEnabled) return;
 
+    // Optimistic update
     final updated = List<RelayConfig>.from(state);
     final newIsOn = !updated[index].isOn;
     updated[index] = updated[index].copyWith(isOn: newIsOn);
-    state = updated; // optimistic update
+    state = updated;
 
-    // TB RPC
-    final client = ref.read(tbAuthProvider.notifier).apiClient();
-    client?.sendRpc(deviceId, 'setRelayState', {'relay': index, 'state': newIsOn});
+    // TB one-way RPC → ESP32'ye röle komutu gönder
+    _rpcSentAt[index] = DateTime.now(); // debounce başlat
+    try {
+      final token = await ref.read(tbAuthProvider.future);
+      if (token == null) {
+        debugPrint('[RelayStates] toggle: TB token null, RPC gönderilmedi');
+        _rpcSentAt.remove(index);
+        return;
+      }
+      final client = TbApiClient(baseUrl: tbBaseUrl, jwtToken: token);
+      await client.sendRpc(
+        deviceId,
+        'setRelayState',
+        {'relay_index': index, 'state': newIsOn},
+      );
+      debugPrint('[RelayStates] RPC gönderildi: relay_index=$index state=$newIsOn');
+    } catch (e) {
+      debugPrint('[RelayStates] RPC hatası: $e');
+      _rpcSentAt.remove(index);
+      // Optimistic update'i geri al
+      final reverted = List<RelayConfig>.from(state);
+      reverted[index] = reverted[index].copyWith(isOn: !newIsOn);
+      state = reverted;
+    }
   }
 
   Future<void> setEnabled(int index, bool enabled) async {

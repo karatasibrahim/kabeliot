@@ -35,11 +35,14 @@ class MqttConnection extends _$MqttConnection {
 
   Future<void> _connect(MqttSettingsData settings) async {
     if (settings.host.isEmpty) return;
+    // ThingsBoard MQTT kimlik doğrulama gerektiriyor.
+    // Kullanıcı adı tanımlı değilse bağlantı denemesi yapma.
+    if (settings.user.isEmpty) return;
     await MqttService.instance.connect(
       host: settings.host,
       port: settings.port,
-      clientId: 'kabel_app_${DateTime.now().millisecondsSinceEpoch}',
-      user: settings.user.isEmpty ? null : settings.user,
+      clientId: 'kabel_${DateTime.now().millisecondsSinceEpoch % 100000}',
+      user: settings.user,
       password: settings.password.isEmpty ? null : settings.password,
     );
   }

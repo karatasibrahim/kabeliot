@@ -10,7 +10,7 @@ const _kPass = 'mqtt_pass';
 
 class MqttSettingsData {
   const MqttSettingsData({
-    this.host = 'mqtt.kabelteknoloji.com',
+    this.host = 'smartio.kabelteknoloji.com',
     this.port = 1883,
     this.user = '',
     this.password = '',
@@ -40,8 +40,13 @@ class MqttSettings extends _$MqttSettings {
   @override
   Future<MqttSettingsData> build() async {
     final prefs = await SharedPreferences.getInstance();
+    // Eski yanlış host kaydedilmişse temizle
+    final savedHost = prefs.getString(_kHost);
+    if (savedHost == 'mqtt.kabelteknoloji.com') {
+      await prefs.remove(_kHost);
+    }
     return MqttSettingsData(
-      host: prefs.getString(_kHost) ?? 'mqtt.kabelteknoloji.com',
+      host: prefs.getString(_kHost) ?? 'smartio.kabelteknoloji.com',
       port: prefs.getInt(_kPort) ?? 1883,
       user: prefs.getString(_kUser) ?? '',
       password: prefs.getString(_kPass) ?? '',

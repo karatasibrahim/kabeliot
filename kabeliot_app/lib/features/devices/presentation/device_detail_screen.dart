@@ -56,16 +56,8 @@ class DeviceDetailScreen extends ConsumerWidget {
             _DeviceInfoCard(device: device).animate().fadeIn(duration: 300.ms),
             SizedBox(height: 24.h),
 
-            // Sensörler — her zaman 6 slot
-            _SectionHeader(
-              title: 'Sensörler',
-              icon: Icons.sensors_rounded,
-              color: AppColors.accent,
-              active: device.sensorCount,
-              max: kMaxSensors,
-            ),
-            SizedBox(height: 12.h),
-            _SensorGrid(device: device),
+            // Sensörler — her zaman 6 slot, aktif sayısı TB datasından
+            _SensorSection(device: device),
             SizedBox(height: 24.h),
 
             // Röleler — her zaman 8 slot, aktif sayısı provider'dan
@@ -132,13 +124,20 @@ class _InfoRow extends StatelessWidget {
             children: [
               Text(label, style: AppTextStyles.bodySmall),
               const Spacer(),
-              Text(value,
+              Flexible(
+                child: Text(
+                  value,
+                  textAlign: TextAlign.end,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: mono
                       ? AppTextStyles.mono.copyWith(fontSize: 12.sp)
                       : AppTextStyles.bodyMedium.copyWith(
                           color: Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w500,
-                        )),
+                        ),
+                ),
+              ),
             ],
           ),
         ),
@@ -189,38 +188,57 @@ class _SectionHeader extends StatelessWidget {
 
 // ─── Sensör Grid (6 slot) ────────────────────────────────────────────────────
 
-class _SensorGrid extends ConsumerWidget {
-  const _SensorGrid({required this.device});
+/// Sensör bölümü — header + 6 slot grid.
+/// Aktif sayısı TB'den gelen veriye göre hesaplanır.
+class _SensorSection extends ConsumerWidget {
+  const _SensorSection({required this.device});
   final DeviceModel device;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Her zaman kMaxSensors (6) slot yükle
-    final configAsync = ref.watch(sensorConfigsProvider(device.tbDeviceId ?? device.id, kMaxSensors));
+    final deviceId = device.tbDeviceId ?? device.id;
+    final configAsync = ref.watch(sensorConfigsProvider(deviceId, kMaxSensors));
 
-    return configAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Text('Hata: $e'),
-      data: (configs) => GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: kMaxSensors,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          childAspectRatio: 1.5,
-          crossAxisSpacing: 12.w,
-          mainAxisSpacing: 12.h,
+    // Her slot için live data izle — data gelen slotları say
+    final activeSensorCount = List.generate(kMaxSensors, (i) {
+      final liveData = ref.watch(liveSensorDataProvider(deviceId, i));
+      final isBaseActive = i < device.sensorCount;
+      return isBaseActive || liveData.isNotEmpty;
+    }).where((v) => v).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(
+          title: 'Sensörler',
+          icon: Icons.sensors_rounded,
+          color: AppColors.accent,
+          active: activeSensorCount,
+          max: kMaxSensors,
         ),
-        itemBuilder: (context, i) {
-          final isActive = i < device.sensorCount;
-          return _SensorCard(
-            device: device,
-            index: i,
-            config: configs[i],
-            isActive: isActive,
-          ).animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: i * 55));
-        },
-      ),
+        SizedBox(height: 12.h),
+        configAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Text('Hata: $e'),
+          data: (configs) => GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: kMaxSensors,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 1.5,
+              crossAxisSpacing: 12.w,
+              mainAxisSpacing: 12.h,
+            ),
+            itemBuilder: (context, i) => _SensorCard(
+              device: device,
+              index: i,
+              config: configs[i],
+              isActive: i < device.sensorCount,
+            ).animate().fadeIn(duration: 300.ms, delay: Duration(milliseconds: i * 55)),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -239,17 +257,21 @@ class _SensorCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final liveData = isActive ? ref.watch(liveSensorDataProvider(device.tbDeviceId ?? device.id, index)) : <double>[];
-    final currentVal = liveData.isEmpty ? 0.0 : liveData.last;
-    final color = isActive ? config.type.color : AppColors.textDisabled;
+    // Her zaman subscribe et — veri gelip gelmediğini TB'den öğreneceğiz
+    final liveData = ref.watch(liveSensorDataProvider(device.tbDeviceId ?? device.id, index));
+    final hasData = liveData.isNotEmpty;
+    final currentVal = hasData ? liveData.last : 0.0;
+    // TB'den veri geliyor  →  aktif göster;  gelmiyor  →  pasif slot
+    final effectiveActive = isActive || hasData;
+    final color = effectiveActive ? config.type.color : AppColors.textDisabled;
 
-    final isAboveMax = isActive && config.thresholdMax != null && currentVal > config.thresholdMax!;
-    final isBelowMin = isActive && config.thresholdMin != null && currentVal < config.thresholdMin!;
+    final isAboveMax = effectiveActive && config.thresholdMax != null && currentVal > config.thresholdMax!;
+    final isBelowMin = effectiveActive && config.thresholdMin != null && currentVal < config.thresholdMin!;
     final isAlert = isAboveMax || isBelowMin;
     final cardColor = isAlert ? AppColors.error : color;
 
     return GestureDetector(
-      onTap: isActive
+      onTap: effectiveActive
           ? () => showSensorChartSheet(context, device: device, index: index, config: config)
           : () => showSensorConfigSheet(context, ref: ref, device: device, index: index, config: config),
       onLongPress: () => showSensorConfigSheet(context, ref: ref, device: device, index: index, config: config),
@@ -260,14 +282,12 @@ class _SensorCard extends ConsumerWidget {
           color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(14.r),
           border: Border.all(
-            color: isActive
+            color: effectiveActive
                 ? (isAlert ? AppColors.error.withValues(alpha: 0.6) : AppColors.border)
                 : AppColors.border.withValues(alpha: 0.5),
-            width: isActive ? 1 : 1,
-            style: isActive ? BorderStyle.solid : BorderStyle.solid,
           ),
         ),
-        child: isActive ? _ActiveSensorContent(
+        child: effectiveActive ? _ActiveSensorContent(
           config: config,
           liveData: liveData,
           currentVal: currentVal,
