@@ -27,6 +27,7 @@ class HomeScreen extends ConsumerWidget {
     final devices = devicesAsync.valueOrNull ?? [];
     final totalDevices = devices.length;
     final onlineCount = devices.where((d) => d.isOnline).length;
+    final isServerConnected = tbAuth.valueOrNull != null;
 
     final recentActivity = notifications.take(4).toList();
 
@@ -40,11 +41,11 @@ class HomeScreen extends ConsumerWidget {
           child: ListView(
             padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
             children: [
-              _buildHeader(mqttStatus),
+              _buildHeader(isServerConnected),
               SizedBox(height: 20.h),
               _buildSummaryGrid(totalDevices, onlineCount),
               SizedBox(height: 24.h),
-              _buildQuickActions(context, ref, mqttStatus),
+              _buildQuickActions(context, ref),
               SizedBox(height: 24.h),
               _buildRecentActivity(recentActivity),
               SizedBox(height: 24.h),
@@ -104,18 +105,14 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader(MqttConnectionStatus mqttStatus) {
+  Widget _buildHeader(bool isServerConnected) {
     final hour = DateTime.now().hour;
     final greeting = hour < 12 ? 'Günaydın' : hour < 18 ? 'İyi günler' : 'İyi akşamlar';
     final now = DateTime.now();
     final dateStr = '${now.day} ${_monthName(now.month)} ${now.year}';
 
-    final (statusColor, statusText) = switch (mqttStatus) {
-      MqttConnectionStatus.connected => (AppColors.success, 'MQTT Bağlı'),
-      MqttConnectionStatus.connecting => (AppColors.warning, 'Bağlanıyor'),
-      MqttConnectionStatus.disconnected => (AppColors.error, 'MQTT Bağlı Değil'),
-      MqttConnectionStatus.error => (AppColors.error, 'Bağlantı Hatası'),
-    };
+    final statusColor = isServerConnected ? AppColors.success : AppColors.warning;
+    final statusText = isServerConnected ? 'Sunucuya Bağlandı' : 'Sunucuya Bağlanıyor';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -160,7 +157,7 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildQuickActions(BuildContext context, WidgetRef ref, MqttConnectionStatus mqttStatus) {
+  Widget _buildQuickActions(BuildContext context, WidgetRef ref) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -181,18 +178,7 @@ class HomeScreen extends ConsumerWidget {
                 icon: Icons.refresh_rounded,
                 label: 'Yenile',
                 color: AppColors.accent,
-                onTap: () => ref.read(mqttConnectionProvider.notifier).reconnect(),
-              ),
-              SizedBox(width: 10.w),
-              _QuickActionChip(
-                icon: mqttStatus == MqttConnectionStatus.connected
-                    ? Icons.cloud_done_outlined
-                    : Icons.cloud_outlined,
-                label: mqttStatus == MqttConnectionStatus.connected ? 'MQTT Bağlı' : 'MQTT Bağlan',
-                color: mqttStatus == MqttConnectionStatus.connected
-                    ? AppColors.success
-                    : AppColors.warning,
-                onTap: () => ref.read(mqttConnectionProvider.notifier).reconnect(),
+                onTap: () => ref.invalidate(deviceListProvider),
               ),
               SizedBox(width: 10.w),
               _QuickActionChip(
