@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -49,7 +50,7 @@ class RelayStates extends _$RelayStates {
   StreamSubscription<Map<String, dynamic>>? _wsSub;
   // RPC gönderilen rölelerin timestamp'i — bu süre içinde WS güncellemesi yok sayılır
   final Map<int, DateTime> _rpcSentAt = {};
-  static const _rpcDebounce = Duration(seconds: 4);
+  static const _rpcDebounce = Duration(seconds: 8);
 
   @override
   List<RelayConfig> build(String deviceId, int relayCount) {
@@ -88,12 +89,23 @@ class RelayStates extends _$RelayStates {
       for (int i = 0; i < updated.length; i++) {
         final key = 'relay_${i}_status';
         if (!data.containsKey(key)) continue;
-        // RPC gönderildikten sonra debounce süresi içindeyse bu röleyi yoksay
-        final sentAt = _rpcSentAt[i];
-        if (sentAt != null && DateTime.now().difference(sentAt) < _rpcDebounce) continue;
+
         final raw = data[key];
-        final isOn = raw is bool ? raw : (raw == 1 || raw == true || raw == 'true');
-        updated[i] = updated[i].copyWith(isOn: isOn);
+        final incoming = raw is bool ? raw : (raw == 1 || raw == true || raw == 'true');
+
+        final sentAt = _rpcSentAt[i];
+        if (sentAt != null && DateTime.now().difference(sentAt) < _rpcDebounce) {
+          // Debounce aktif:
+          // - Gelen değer mevcut optimistic state ile AYNI ise → ESP32 onayladı, debounce kaldır
+          // - Farklı ise → eski telemetry, yoksay (optimistic state'i koru)
+          if (incoming == state[i].isOn) {
+            _rpcSentAt.remove(i); // onaylandı
+          } else {
+            continue; // optimistic state'i koru
+          }
+        }
+
+        updated[i] = updated[i].copyWith(isOn: incoming);
         changed = true;
       }
       if (changed) state = updated;
@@ -108,8 +120,9 @@ class RelayStates extends _$RelayStates {
     );
   }
 
-  Future<void> toggle(int index) async {
-    if (!state[index].isEnabled) return;
+  /// Röleyi aç/kapat. Hata mesajı döner (null = başarılı).
+  Future<String?> toggle(int index) async {
+    if (!state[index].isEnabled) return null;
 
     // Optimistic update
     final updated = List<RelayConfig>.from(state);
@@ -117,30 +130,49 @@ class RelayStates extends _$RelayStates {
     updated[index] = updated[index].copyWith(isOn: newIsOn);
     state = updated;
 
-    // TB one-way RPC → ESP32'ye röle komutu gönder
-    _rpcSentAt[index] = DateTime.now(); // debounce başlat
+    _rpcSentAt[index] = DateTime.now();
     try {
       final token = await ref.read(tbAuthProvider.future);
       if (token == null) {
-        debugPrint('[RelayStates] toggle: TB token null, RPC gönderilmedi');
         _rpcSentAt.remove(index);
-        return;
+        _revert(index, newIsOn);
+        return 'Sunucu bağlantısı yok.';
       }
       final client = TbApiClient(baseUrl: tbBaseUrl, jwtToken: token);
-      await client.sendRpc(
+      await client.sendRpcOneway(
         deviceId,
-        'setRelayState',
-        {'relay_index': index, 'state': newIsOn},
+        'setRelay',
+        {'relay_id': index, 'state': newIsOn},
       );
-      debugPrint('[RelayStates] RPC gönderildi: relay_index=$index state=$newIsOn');
-    } catch (e) {
-      debugPrint('[RelayStates] RPC hatası: $e');
+      debugPrint('[RelayStates] RPC (oneway) gönderildi: relay_id=$index state=$newIsOn');
+      return null;
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        // Bağlantı koparsa komut yine de iletilmiş olabilir
+        debugPrint('[RelayStates] RPC bağlantı timeout: relay_id=$index');
+        return null;
+      }
       _rpcSentAt.remove(index);
-      // Optimistic update'i geri al
-      final reverted = List<RelayConfig>.from(state);
-      reverted[index] = reverted[index].copyWith(isOn: !newIsOn);
-      state = reverted;
+      _revert(index, newIsOn);
+      final statusCode = e.response?.statusCode;
+      if (statusCode == 409) {
+        debugPrint('[RelayStates] Cihaz çevrimdışı (409)');
+        return 'Cihaz şu an çevrimdışı.';
+      }
+      debugPrint('[RelayStates] RPC hatası $statusCode: $e');
+      return 'Röle komutu gönderilemedi.';
+    } catch (e) {
+      _rpcSentAt.remove(index);
+      _revert(index, newIsOn);
+      return 'Röle komutu gönderilemedi.';
     }
+  }
+
+  void _revert(int index, bool failedIsOn) {
+    final reverted = List<RelayConfig>.from(state);
+    reverted[index] = reverted[index].copyWith(isOn: !failedIsOn);
+    state = reverted;
   }
 
   Future<void> setEnabled(int index, bool enabled) async {

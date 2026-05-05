@@ -464,7 +464,18 @@ class _RelayList extends ConsumerWidget {
               _RelayRow(
                 index: i,
                 relay: relay,
-                onToggle: () => notifier.toggle(i),
+                onToggle: () async {
+                  final err = await notifier.toggle(i);
+                  if (err != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(err),
+                        backgroundColor: AppColors.error,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                },
                 onEnable: () => notifier.setEnabled(i, true),
                 onDisable: () => notifier.setEnabled(i, false),
                 onRename: (name) => notifier.rename(i, name),

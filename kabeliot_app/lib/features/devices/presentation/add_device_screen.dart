@@ -15,6 +15,7 @@ import '../../../shared/providers/auth_state_provider.dart';
 import '../../../shared/widgets/gradient_scaffold.dart';
 import '../../../shared/widgets/kabel_button.dart';
 import '../../../shared/widgets/kabel_text_field.dart';
+import '../data/provisioning_service.dart';
 
 // KABEL ESP32 AP SSID prefix — KABEL_ veya KABEL- ile başlayan ağlar listelenir
 const _kabelPrefix = 'KABEL';
@@ -50,10 +51,14 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
   // Seçilen AP
   _KabelApInfo? _selectedAp;
 
-  // Adım 2 — Cihaz adı + kaydetme
+  // Adım 2 — Cihaz adı + WiFi + kaydetme
   final _formKey = GlobalKey<FormState>();
   final _deviceNameCtrl = TextEditingController();
+  final _wifiSsidCtrl = TextEditingController();
+  final _wifiPasswordCtrl = TextEditingController();
   bool _isSaving = false;
+  String _loadingMessage = 'Kaydediliyor...';
+  String _loadingSubtitle = 'Cihaz sisteme ekleniyor.';
   bool _saveSuccess = false;
   String? _saveError;
 
@@ -61,6 +66,8 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
   void dispose() {
     _manualSsidCtrl.dispose();
     _deviceNameCtrl.dispose();
+    _wifiSsidCtrl.dispose();
+    _wifiPasswordCtrl.dispose();
     super.dispose();
   }
 
@@ -169,6 +176,8 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
     setState(() {
       _isSaving = true;
       _saveError = null;
+      _loadingMessage = 'Kaydediliyor...';
+      _loadingSubtitle = 'Cihaz sisteme ekleniyor.';
     });
 
     try {
@@ -183,6 +192,10 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
       );
 
       // ── 2. ThingsBoard — customer altına cihaz ekle ────────────────────
+      setState(() {
+        _loadingMessage = 'ThingsBoard\'a ekleniyor...';
+        _loadingSubtitle = 'Cihaz bulut platformuna kaydediliyor.';
+      });
       // Her kayıt işleminde taze JWT al (token expire olmuş olabilir)
       await ref.read(tbAuthProvider.notifier).reconnect();
       final tbToken = await ref.read(tbAuthProvider.future);
@@ -226,6 +239,20 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
         tbAccessToken: tbAccessToken,
         tbCustomerToken: tbCustomerToken,
       );
+
+      // ── 4. ESP32'ye WiFi bilgilerini gönder ────────────────────────────
+      final wifiSsid = _wifiSsidCtrl.text.trim();
+      final wifiPassword = _wifiPasswordCtrl.text;
+      if (wifiSsid.isNotEmpty) {
+        setState(() {
+          _loadingMessage = 'ESP32\'ye gönderiliyor...';
+          _loadingSubtitle = 'Cihaz WiFi\'ye bağlanıyor.';
+        });
+        await ProvisioningService.real.provision(ProvisioningRequest(
+          wifiSsid: wifiSsid,
+          wifiPassword: wifiPassword,
+        ));
+      }
 
       if (!mounted) return;
       setState(() {
@@ -324,7 +351,11 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
                         formKey: _formKey,
                         selectedAp: _selectedAp,
                         deviceNameCtrl: _deviceNameCtrl,
+                        wifiSsidCtrl: _wifiSsidCtrl,
+                        wifiPasswordCtrl: _wifiPasswordCtrl,
                         isSaving: _isSaving,
+                        loadingMessage: _loadingMessage,
+                        loadingSubtitle: _loadingSubtitle,
                         saveSuccess: _saveSuccess,
                         saveError: _saveError,
                         onSave: _save,
@@ -564,7 +595,11 @@ class _Step2Save extends StatelessWidget {
     required this.formKey,
     required this.selectedAp,
     required this.deviceNameCtrl,
+    required this.wifiSsidCtrl,
+    required this.wifiPasswordCtrl,
     required this.isSaving,
+    required this.loadingMessage,
+    required this.loadingSubtitle,
     required this.saveSuccess,
     required this.saveError,
     required this.onSave,
@@ -575,7 +610,11 @@ class _Step2Save extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final _KabelApInfo? selectedAp;
   final TextEditingController deviceNameCtrl;
+  final TextEditingController wifiSsidCtrl;
+  final TextEditingController wifiPasswordCtrl;
   final bool isSaving;
+  final String loadingMessage;
+  final String loadingSubtitle;
   final bool saveSuccess;
   final String? saveError;
   final VoidCallback onSave;
@@ -585,9 +624,9 @@ class _Step2Save extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isSaving) {
-      return const _LoadingView(
-        message: 'Kaydediliyor...',
-        subtitle: 'Cihaz sisteme ekleniyor.',
+      return _LoadingView(
+        message: loadingMessage,
+        subtitle: loadingSubtitle,
       );
     }
 
@@ -709,6 +748,31 @@ class _Step2Save extends StatelessWidget {
             prefixIcon: Icons.label_outline,
             validator: (v) =>
                 (v == null || v.trim().isEmpty) ? 'Cihaz adı gerekli' : null,
+          ),
+
+          SizedBox(height: 20.h),
+
+          Text(
+            'BAĞLANACAĞI WiFi',
+            style: AppTextStyles.labelSmall
+                .copyWith(color: AppColors.textDisabled, letterSpacing: 1.1),
+          ),
+          SizedBox(height: 8.h),
+          KabelTextField(
+            label: 'WiFi Ağı (SSID)',
+            hint: 'örn: Ofis_WiFi',
+            controller: wifiSsidCtrl,
+            prefixIcon: Icons.wifi_rounded,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'WiFi ağı gerekli' : null,
+          ),
+          SizedBox(height: 12.h),
+          KabelTextField(
+            label: 'WiFi Şifresi',
+            hint: '••••••••',
+            controller: wifiPasswordCtrl,
+            prefixIcon: Icons.lock_outline_rounded,
+            isObscure: true,
           ),
 
           if (saveError != null) ...[

@@ -127,8 +127,30 @@ class TbApiClient {
 
   // ── RPC ───────────────────────────────────────────────────────────────────
 
-  /// One-way RPC — fire and forget.
-  Future<void> sendRpc(
+  /// Two-way RPC — cihazdan yanıt bekler.
+  /// [timeoutMs]: TB'nin cihazdan yanıt bekleme süresi (ms).
+  Future<Map<String, dynamic>?> sendRpc(
+    String deviceId,
+    String method,
+    Map<String, dynamic> params, {
+    int timeoutMs = 10000,
+  }) async {
+    final resp = await _dio.post<Map<String, dynamic>>(
+      '/api/plugins/rpc/twoway/$deviceId',
+      data: {
+        'method': method,
+        'params': params,
+        'timeout': timeoutMs,
+      },
+      options: Options(
+        receiveTimeout: Duration(milliseconds: timeoutMs + 5000),
+      ),
+    );
+    return resp.data;
+  }
+
+  /// One-way RPC — cihazdan yanıt beklemez, TB komutu iletir ve hemen 200 döner.
+  Future<void> sendRpcOneway(
     String deviceId,
     String method,
     Map<String, dynamic> params,
