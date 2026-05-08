@@ -465,7 +465,7 @@ class _RelayStateStreamProviderElement
   int get relayIndex => (origin as RelayStateStreamProvider).relayIndex;
 }
 
-String _$mqttConnectionHash() => r'd0316fe9e666f79f821831b8adf4e781bdf92f34';
+String _$mqttConnectionHash() => r'7d0c0861bfab6d7d89c0dc86dc207ec36a91dc43';
 
 /// See also [MqttConnection].
 @ProviderFor(MqttConnection)

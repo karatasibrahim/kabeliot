@@ -6,7 +6,7 @@ part of 'live_data_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$liveSensorDataHash() => r'c75dc79bb09ced363aa48763c5aad63706d63749';
+String _$liveSensorDataHash() => r'bfe72fd24f5c6ea68c18c7fa9eb72f663d213de2';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -37,26 +37,34 @@ abstract class _$LiveSensorData
   List<double> build(String deviceId, int sensorIndex);
 }
 
-/// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+/// Belirli bir sensörün son [_historyLength] değeri — ThingsBoard WebSocket'ten beslenir.
 /// [deviceId] ThingsBoard device UUID'si.
+/// Başlangıçta boş liste döner; ilk veri geldiğinde dolmaya başlar.
+/// `state.isEmpty` → henüz veri yok; `state.isNotEmpty` → veri akıyor.
 ///
 /// Copied from [LiveSensorData].
 @ProviderFor(LiveSensorData)
 const liveSensorDataProvider = LiveSensorDataFamily();
 
-/// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+/// Belirli bir sensörün son [_historyLength] değeri — ThingsBoard WebSocket'ten beslenir.
 /// [deviceId] ThingsBoard device UUID'si.
+/// Başlangıçta boş liste döner; ilk veri geldiğinde dolmaya başlar.
+/// `state.isEmpty` → henüz veri yok; `state.isNotEmpty` → veri akıyor.
 ///
 /// Copied from [LiveSensorData].
 class LiveSensorDataFamily extends Family<List<double>> {
-  /// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+  /// Belirli bir sensörün son [_historyLength] değeri — ThingsBoard WebSocket'ten beslenir.
   /// [deviceId] ThingsBoard device UUID'si.
+  /// Başlangıçta boş liste döner; ilk veri geldiğinde dolmaya başlar.
+  /// `state.isEmpty` → henüz veri yok; `state.isNotEmpty` → veri akıyor.
   ///
   /// Copied from [LiveSensorData].
   const LiveSensorDataFamily();
 
-  /// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+  /// Belirli bir sensörün son [_historyLength] değeri — ThingsBoard WebSocket'ten beslenir.
   /// [deviceId] ThingsBoard device UUID'si.
+  /// Başlangıçta boş liste döner; ilk veri geldiğinde dolmaya başlar.
+  /// `state.isEmpty` → henüz veri yok; `state.isNotEmpty` → veri akıyor.
   ///
   /// Copied from [LiveSensorData].
   LiveSensorDataProvider call(String deviceId, int sensorIndex) {
@@ -85,14 +93,18 @@ class LiveSensorDataFamily extends Family<List<double>> {
   String? get name => r'liveSensorDataProvider';
 }
 
-/// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+/// Belirli bir sensörün son [_historyLength] değeri — ThingsBoard WebSocket'ten beslenir.
 /// [deviceId] ThingsBoard device UUID'si.
+/// Başlangıçta boş liste döner; ilk veri geldiğinde dolmaya başlar.
+/// `state.isEmpty` → henüz veri yok; `state.isNotEmpty` → veri akıyor.
 ///
 /// Copied from [LiveSensorData].
 class LiveSensorDataProvider
     extends AutoDisposeNotifierProviderImpl<LiveSensorData, List<double>> {
-  /// Belirli bir sensörün son 60 değeri — ThingsBoard WebSocket'ten beslenir.
+  /// Belirli bir sensörün son [_historyLength] değeri — ThingsBoard WebSocket'ten beslenir.
   /// [deviceId] ThingsBoard device UUID'si.
+  /// Başlangıçta boş liste döner; ilk veri geldiğinde dolmaya başlar.
+  /// `state.isEmpty` → henüz veri yok; `state.isNotEmpty` → veri akıyor.
   ///
   /// Copied from [LiveSensorData].
   LiveSensorDataProvider(String deviceId, int sensorIndex)

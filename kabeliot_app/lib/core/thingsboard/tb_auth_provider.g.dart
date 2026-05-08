@@ -6,9 +6,10 @@ part of 'tb_auth_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$tbAuthHash() => r'1c64f4f351454a95f764584f0a451bd303523ef8';
+String _$tbAuthHash() => r'bbb6cae0faab114e76516d1b0f3fcdb8ae11c5b7';
 
-/// Holds the current ThingsBoard JWT token, or null if not logged in.
+/// ThingsBoard JWT tokenını Firestore settings koleksiyonundan okur.
+/// Token yönetimi backend tarafında yapılır — uygulama sadece okur.
 ///
 /// Copied from [TbAuth].
 @ProviderFor(TbAuth)

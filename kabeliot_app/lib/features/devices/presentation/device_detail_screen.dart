@@ -10,6 +10,8 @@ import '../providers/sensor_config_provider.dart';
 import '../providers/live_data_provider.dart';
 import 'sensor_config_sheet.dart';
 import 'sensor_chart_sheet.dart';
+import '../providers/automation_provider.dart';
+import 'automation_list_screen.dart';
 
 class DeviceDetailScreen extends ConsumerWidget {
   const DeviceDetailScreen({super.key, required this.device});
@@ -70,6 +72,10 @@ class DeviceDetailScreen extends ConsumerWidget {
             ),
             SizedBox(height: 12.h),
             _RelayList(device: device),
+            SizedBox(height: 24.h),
+
+            // Otomasyonlar
+            _AutomationSection(device: device),
             SizedBox(height: 24.h),
           ],
         ),
@@ -670,6 +676,88 @@ class _RelayRow extends StatelessWidget {
             child: Text('Pasife Al', style: AppTextStyles.bodySmall.copyWith(color: AppColors.error)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Otomasyon Bölümü ────────────────────────────────────────────────────────
+
+class _AutomationSection extends ConsumerWidget {
+  const _AutomationSection({required this.device});
+  final DeviceModel device;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final deviceId = device.tbDeviceId ?? device.id;
+    final rules = ref.watch(automationRulesProvider(deviceId));
+    final cs = Theme.of(context).colorScheme;
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => AutomationListScreen(
+          deviceId: deviceId,
+          deviceName: device.name,
+        ),
+      )),
+      child: Container(
+        padding: EdgeInsets.all(16.r),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(14.r),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40.r, height: 40.r,
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+              child: Icon(Icons.auto_awesome_rounded, color: AppColors.accent, size: 20.r),
+            ),
+            SizedBox(width: 14.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Otomasyonlar', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w500)),
+                  SizedBox(height: 2.h),
+                  Text(
+                    rules.isEmpty
+                        ? 'Henüz kural yok'
+                        : '${rules.length} kural tanımlı',
+                    style: AppTextStyles.labelSmall,
+                  ),
+                ],
+              ),
+            ),
+            if (rules.isNotEmpty) ...[
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+                child: Text(
+                  '${rules.length}',
+                  style: AppTextStyles.labelSmall.copyWith(color: AppColors.accent),
+                ),
+              ),
+              SizedBox(width: 8.w),
+            ],
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+              ),
+              child: Text('Yönet', style: AppTextStyles.labelSmall.copyWith(color: AppColors.primary)),
+            ),
+          ],
+        ),
       ),
     );
   }

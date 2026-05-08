@@ -188,6 +188,95 @@ class DeviceModel {
 const kMaxSensors = 6;
 const kMaxRelays = 8;
 
+// ─── Otomasyon ────────────────────────────────────────────────────────────────
+
+enum RuleOperator { lt, gt, eq, lte, gte }
+
+extension RuleOperatorExt on RuleOperator {
+  String get symbol => switch (this) {
+        RuleOperator.lt  => '<',
+        RuleOperator.gt  => '>',
+        RuleOperator.eq  => '=',
+        RuleOperator.lte => '≤',
+        RuleOperator.gte => '≥',
+      };
+
+  String get label => switch (this) {
+        RuleOperator.lt  => 'küçükse',
+        RuleOperator.gt  => 'büyükse',
+        RuleOperator.eq  => 'eşitse',
+        RuleOperator.lte => 'küçük/eşitse',
+        RuleOperator.gte => 'büyük/eşitse',
+      };
+}
+
+class AutomationRule {
+  const AutomationRule({
+    required this.id,
+    required this.sensorIndex,
+    required this.operator,
+    required this.threshold,
+    required this.relayIndex,
+    required this.relayAction,
+    this.isEnabled = true,
+  });
+
+  final String id;
+  final int sensorIndex;
+  final RuleOperator operator;
+  final double threshold;
+  final int relayIndex;
+  final bool relayAction; // true = aç, false = kapat
+
+  final bool isEnabled;
+
+  bool evaluate(double value) => switch (operator) {
+        RuleOperator.lt  => value < threshold,
+        RuleOperator.gt  => value > threshold,
+        RuleOperator.eq  => (value - threshold).abs() < 0.001,
+        RuleOperator.lte => value <= threshold,
+        RuleOperator.gte => value >= threshold,
+      };
+
+  AutomationRule copyWith({
+    int? sensorIndex,
+    RuleOperator? operator,
+    double? threshold,
+    int? relayIndex,
+    bool? relayAction,
+    bool? isEnabled,
+  }) =>
+      AutomationRule(
+        id: id,
+        sensorIndex: sensorIndex ?? this.sensorIndex,
+        operator: operator ?? this.operator,
+        threshold: threshold ?? this.threshold,
+        relayIndex: relayIndex ?? this.relayIndex,
+        relayAction: relayAction ?? this.relayAction,
+        isEnabled: isEnabled ?? this.isEnabled,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'sensorIndex': sensorIndex,
+        'operator': operator.name,
+        'threshold': threshold,
+        'relayIndex': relayIndex,
+        'relayAction': relayAction,
+        'isEnabled': isEnabled,
+      };
+
+  factory AutomationRule.fromJson(Map<String, dynamic> j) => AutomationRule(
+        id: j['id'] as String,
+        sensorIndex: j['sensorIndex'] as int,
+        operator: RuleOperator.values.firstWhere((e) => e.name == j['operator']),
+        threshold: (j['threshold'] as num).toDouble(),
+        relayIndex: j['relayIndex'] as int,
+        relayAction: j['relayAction'] as bool,
+        isEnabled: (j['isEnabled'] as bool?) ?? true,
+      );
+}
+
 // ─── Firestore Modelleri ──────────────────────────────────────────────────────
 
 /// Firestore companies/{id}/devices/{deviceId} dökümanı

@@ -175,6 +175,43 @@ class RelayStates extends _$RelayStates {
     state = reverted;
   }
 
+  /// Otomasyon tarafından çağrılır — röleyi belirli bir değere ayarlar.
+  Future<void> setRelayTo(int index, bool value) async {
+    if (!state[index].isEnabled) return;
+    if (state[index].isOn == value) return;
+
+    final updated = List<RelayConfig>.from(state);
+    updated[index] = updated[index].copyWith(isOn: value);
+    state = updated;
+
+    _rpcSentAt[index] = DateTime.now();
+    try {
+      final token = await ref.read(tbAuthProvider.future);
+      if (token == null) {
+        _rpcSentAt.remove(index);
+        _revert(index, value);
+        return;
+      }
+      final client = TbApiClient(baseUrl: tbBaseUrl, jwtToken: token);
+      await client.sendRpcOneway(
+        deviceId,
+        'setRelay',
+        {'relay_id': index, 'state': value},
+      );
+      debugPrint('[RelayStates] Otomasyon RPC: relay_id=$index state=$value');
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return;
+      }
+      _rpcSentAt.remove(index);
+      _revert(index, value);
+    } catch (_) {
+      _rpcSentAt.remove(index);
+      _revert(index, value);
+    }
+  }
+
   Future<void> setEnabled(int index, bool enabled) async {
     final updated = List<RelayConfig>.from(state);
     updated[index] = updated[index].copyWith(isEnabled: enabled, isOn: false);
